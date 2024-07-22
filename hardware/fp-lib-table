@@ -1,0 +1,4 @@
+(fp_lib_table
+  (lib (name "hootswitch")(type "KiCad")(uri "${KIPRJMOD}/hootswitch.pretty")(options "")(descr ""))
+  (lib (name "MCU_RaspberryPi_and_Boards")(type "KiCad")(uri "${KIPRJMOD}/rpi/MCU_RaspberryPi_and_Boards.pretty")(options "")(descr ""))
+)
