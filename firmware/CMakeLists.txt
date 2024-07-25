@@ -6,7 +6,7 @@ project(hootswitch)
 pico_sdk_init()
 
 add_executable(hootswitch
-        main.c
+        relay.c main.c
         )
 
 # pull in common dependencies
