@@ -59,29 +59,29 @@ static void relay_advance(void)
 			button = 2;
 			cdi_pin = C2_DI_PIN;
 			cdo_pin = C2_DO_PIN;
-			gpio_put(LED3_PIN, 0);
-			gpio_put(LED4_PIN, 1);
+			gpio_put(LED_C1_PIN, 0);
+			gpio_put(LED_C2_PIN, 1);
 			break;
 		case 2:
 			button = 3;
 			cdi_pin = C3_DI_PIN;
 			cdo_pin = C3_DO_PIN;
-			gpio_put(LED4_PIN, 0);
-			gpio_put(LED5_PIN, 1);
+			gpio_put(LED_C2_PIN, 0);
+			gpio_put(LED_C3_PIN, 1);
 			break;
 		case 3:
 			button = 4;
 			cdi_pin = C4_DI_PIN;
 			cdo_pin = C4_DO_PIN;
-			gpio_put(LED5_PIN, 0);
-			gpio_put(LED6_PIN, 1);
+			gpio_put(LED_C3_PIN, 0);
+			gpio_put(LED_C4_PIN, 1);
 			break;
 		default:
 			button = 1;
 			cdi_pin = C1_DI_PIN;
 			cdo_pin = C1_DO_PIN;
-			gpio_put(LED6_PIN, 0);
-			gpio_put(LED3_PIN, 1);
+			gpio_put(LED_C4_PIN, 0);
+			gpio_put(LED_C1_PIN, 1);
 	}
 }
 
@@ -174,7 +174,7 @@ static bool relay_loop(void)
 
 void relay_main(void)
 {
-	gpio_put(LED3_PIN, 1);
+	gpio_put(LED_C1_PIN, 1);
 	uint8_t button = 0;
 
 	while (1) {

@@ -25,18 +25,18 @@
 static void init_hardware(void)
 {
 	// setup LEDs
-	gpio_init(LED1_PIN);
-	gpio_set_dir(LED1_PIN, GPIO_OUT);
-	gpio_init(LED2_PIN);
-	gpio_set_dir(LED2_PIN, GPIO_OUT);
-	gpio_init(LED3_PIN);
-	gpio_set_dir(LED3_PIN, GPIO_OUT);
-	gpio_init(LED4_PIN);
-	gpio_set_dir(LED4_PIN, GPIO_OUT);
-	gpio_init(LED5_PIN);
-	gpio_set_dir(LED5_PIN, GPIO_OUT);
-	gpio_init(LED6_PIN);
-	gpio_set_dir(LED6_PIN, GPIO_OUT);
+	gpio_init(LED_ERR_PIN);
+	gpio_set_dir(LED_ERR_PIN, GPIO_OUT);
+	gpio_init(LED_ACT_PIN);
+	gpio_set_dir(LED_ACT_PIN, GPIO_OUT);
+	gpio_init(LED_C1_PIN);
+	gpio_set_dir(LED_C1_PIN, GPIO_OUT);
+	gpio_init(LED_C2_PIN);
+	gpio_set_dir(LED_C2_PIN, GPIO_OUT);
+	gpio_init(LED_C3_PIN);
+	gpio_set_dir(LED_C3_PIN, GPIO_OUT);
+	gpio_init(LED_C4_PIN);
+	gpio_set_dir(LED_C4_PIN, GPIO_OUT);
 #ifdef PICO_DEFAULT_LED_PIN
 	gpio_init(PICO_DEFAULT_LED_PIN);
 	gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);

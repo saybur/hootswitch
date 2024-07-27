@@ -18,12 +18,12 @@
 #ifndef __HARDWARE_H__
 #define __HARDWARE_H__
 
-#define LED1_PIN        0
-#define LED2_PIN        1
-#define LED3_PIN        2
-#define LED4_PIN        3
-#define LED5_PIN        4
-#define LED6_PIN        5
+#define LED_ERR_PIN     0
+#define LED_ACT_PIN     1
+#define LED_C1_PIN      2
+#define LED_C2_PIN      3
+#define LED_C3_PIN      4
+#define LED_C4_PIN      5
 #define SWITCH_PIN      6
 #define BUZZER_PIN      7
 #define A_DO_PIN        26
