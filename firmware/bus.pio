@@ -32,11 +32,10 @@
 .wrap
 
 
-; Writes bits to the bus, including preable/postable. This is used both for
-; commands on the devices as well as sending data to one of the machines. It
-; includes:
+; Writes bits to the bus, including preable/postable. This one is tailored for
+; use when sending data as a client device. It includes:
 ;
-; 1) Either attention with sync _or_ '1' start bit, depending on offset,
+; 1) '1' start bit,
 ; 2) Whatever message needs to be written,
 ; 3) The first portion of the stop bit.
 ;
@@ -50,20 +49,12 @@
 ; bit; if it is detected low someone else is sending a '0'; this issues a rel
 ; ISR and halts. This feature can be disabled by providing an input pin that is
 ; always high (LED output perhaps).
-;
-; The normal offset for this is the '1' bit for sending data. Starting at
-; (offset + 2) gets attention/sync instead.
 
 .program bus_tx
 .side_set 1
 
 	nop side 1 [6]           ; '1' bit low, 35us
-	jmp tx_bit side 0 [12]   ; '1' bit high, 65us
-
-	set x, 15 side 0         ; --- entry point for attention/sync
-tx_atn:
-	jmp x-- tx_atn side 1 [10] ; attention, 800us low
-	nop side 0 [13]          ; sync, 70us high
+	nop side 0 [12]          ; '1' bit high, 65us
 
 tx_bit:
 	out x, 1 side 1 [5]      ; low 30us, fetch bit value
@@ -79,6 +70,46 @@ tx_bitend:
 
 	nop side 1 [12]          ; assert stop bit for 65us
 	nop side 0               ; release and be done
+
+
+; Writes bits to the bus, including preable/postable. This version is used when
+; acting as a bus host (aka 'machine' in this program's lingo). It is mostly
+; identical to above except for the following:
+;
+; 1) The start will be attention with sync _or_ '1' start bit, depending on
+;    what offset is used,
+; 2) Collision checking is not applied.
+;
+; Otherwise the notes in the above version apply. The split between the two is
+; useful to save a few instructions when these are in different PIO units.
+;
+; The normal offset for this is the '1' bit for sending data. Starting at
+; (offset + 2) gets attention/sync instead.
+
+.program bus_tx_host
+.side_set 1
+
+	nop side 1 [6]           ; '1' bit low, 35us
+	jmp txh_bit side 0 [12]  ; '1' bit high, 65us
+
+	set x, 15 side 0         ; --- entry point for attention/sync
+txh_atn:
+	jmp x-- txh_atn side 1 [10] ; attention, 800us low
+	nop side 0 [13]          ; sync, 70us high
+
+txh_bit:
+	out x, 1 side 1 [5]      ; low 30us, fetch bit value
+	jmp !x txh_0 side 1      ; low +5us, decide if should be released
+	jmp pin txh_bitend side 0 [5] ; release now, 30us high
+txh_0:
+	nop side 0 [5]           ; low +30us
+
+txh_bitend:
+	jmp !osre txh_bit side 0 [6] ; +35us high, loop if more data
+
+	nop side 1 [12]          ; assert stop bit for 65us
+	nop side 0               ; release and be done
+
 
 
 ; Reads bits from the bus. This is used for both command and data reading.
