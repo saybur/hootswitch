@@ -1,0 +1,108 @@
+;
+; Copyright (C) 2024 saybur
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+;
+
+; Drives a pin high or low based on the state of another pin. This is used to
+; 'shadow' the line state between machines or devices.
+;
+; Since side-sets apply immediately when a stall occurs, the below instructions
+; have the effect of setting the output pin low while we wait for the input pin
+; to go high, then releasing output high while we wait for input to go low,
+; repeating indefinitely until stopped.
+
+.program bus_echo
+.side_set 1
+
+.wrap_target
+	wait 1 pin 0  side 1
+	wait 0 pin 0  side 0
+.wrap
+
+
+; Writes bits to the bus, including preable/postable. This is used both for
+; commands on the devices as well as sending data to one of the machines. It
+; includes:
+;
+; 1) Either attention with sync _or_ '1' start bit, depending on offset,
+; 2) Whatever message needs to be written,
+; 3) The first portion of the stop bit.
+;
+; This also checks for collisions if configured.
+;
+; Autopull must be used _and_ must have something in it when this is started
+; to avoid stalling at an inopportune location. When the FIFO depletes the
+; stop bit will be sent.
+;
+; Collision detection works by checking the state of a pin during a '1' data
+; bit; if it is detected low someone else is sending a '0'; this issues a rel
+; ISR and halts. This feature can be disabled by providing an input pin that is
+; always high (LED output perhaps).
+;
+; The normal offset for this is the '1' bit for sending data. Starting at
+; (offset + 2) gets attention/sync instead.
+
+.program bus_tx
+.side_set 1
+
+	nop side 1 [6]           ; '1' bit low, 35us
+	jmp tx_bit side 0 [12]   ; '1' bit high, 65us
+
+	set x, 15 side 0         ; --- entry point for attention/sync
+tx_atn:
+	jmp x-- tx_atn side 1 [10] ; attention, 800us low
+	nop side 0 [13]          ; sync, 70us high
+
+tx_bit:
+	out x, 1 side 1 [5]      ; low 30us, fetch bit value
+	jmp !x tx_0 side 1       ; low +5us, decide if should be released
+	nop side 0 [1]           ; release now, 10us high
+	jmp pin tx_bitend side 0 [3] ; check for collision, +20us high
+	irq wait 0 rel side 0    ; if pin still low, collision: ISR, release, halt
+tx_0:
+	nop side 0 [5]           ; low +30us
+
+tx_bitend:
+	jmp !osre tx_bit side 0 [6] ; +35us high, loop if more data
+
+	nop side 1 [12]          ; assert stop bit for 65us
+	nop side 0               ; release and be done
+
+
+; Reads bits from the bus. This is used for both command and data reading.
+; Will work both when we are the exclusive listener and when the bus is being
+; snooped.
+;
+; This needs autopush enabled to get results. Should be started while the line
+; is high on the '1' bit or sync signal of the relevant transaction. This will
+; stall until a count for the number of bits is provided, likely a good idea to
+; set that before starting.
+;
+; When exclusive reading we likely know the size of a data register. However,
+; when snooping they could be shorter/longer than expected: this will stall
+; waiting for the line to change, so set the autopush to the least likely
+; multiple (probably 8) unless you're confident of what will appear.
+;
+; In general it is not necessary to ask for the stop bit, this will just end
+; early if it gets enough data.
+
+.program bus_rx
+
+	out x, 8                ; load the number of bits to read
+rx_bit:
+	wait 0 pin 0 [9]        ; wait for line to go low, then 50us to center
+	in pins, 1              ; fetch line state
+	wait 1 pin 0            ; wait for line to go high (might be already)
+	jmp x-- rx_bit          ; loop if expecting more data
