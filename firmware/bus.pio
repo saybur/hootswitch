@@ -15,6 +15,11 @@
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ;
 
+; ----------------------------------------------------------------------------
+; For simplicity these functions are all hard-coded to use a 125MHz main clock.
+; Do not change the system clock without updating the clock dividers!
+; ----------------------------------------------------------------------------
+
 ; Drives a pin high or low based on the state of another pin. This is used to
 ; 'shadow' the line state between machines or devices.
 ;
@@ -31,6 +36,16 @@
 	wait 0 pin 0  side 0
 .wrap
 
+% c-sdk {
+static inline void bus_echo_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_out, uint32_t pin_in)
+{
+	*c = bus_echo_program_get_default_config(offset);
+	sm_config_set_in_pins(c, pin_in);
+	sm_config_set_sideset_pins(c, pin_out);
+	sm_config_set_clkdiv_int_frac(c, 10, 0);
+}
+%}
 
 ; Writes bits to the bus, including preable/postable. This one is tailored for
 ; use when sending data as a client device. It includes:
@@ -71,6 +86,18 @@ tx_bitend:
 	nop side 1 [12]          ; assert stop bit for 65us
 	nop side 0               ; release and be done
 
+% c-sdk {
+static inline void bus_tx_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
+{
+	*c = bus_tx_program_get_default_config(offset);
+	sm_config_set_sideset_pins(c, pin_write);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
+	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+}
+%}
 
 ; Writes bits to the bus, including preable/postable. This version is used when
 ; acting as a bus host (aka 'machine' in this program's lingo). It is mostly
@@ -110,7 +137,17 @@ txh_bitend:
 	nop side 1 [12]          ; assert stop bit for 65us
 	nop side 0               ; release and be done
 
-
+% c-sdk {
+static inline void bus_tx_host_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_write)
+{
+	*c = bus_tx_host_program_get_default_config(offset);
+	sm_config_set_sideset_pins(c, pin_write);
+	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
+	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+}
+%}
 
 ; Reads bits from the bus. This is used for both command and data reading.
 ; Will work both when we are the exclusive listener and when the bus is being
@@ -133,7 +170,19 @@ txh_bitend:
 
 	out x, 8                ; load the number of bits to read
 rx_bit:
-	wait 0 pin 0 [9]        ; wait for line to go low, then 50us to center
+	wait 0 pin 0 [24]       ; wait for line to go low, then 50us to center
 	in pins, 1              ; fetch line state
 	wait 1 pin 0            ; wait for line to go high (might be already)
 	jmp x-- rx_bit          ; loop if expecting more data
+
+% c-sdk {
+static inline void bus_rx_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_read)
+{
+	*c = bus_rx_program_get_default_config(offset);
+	sm_config_set_in_pins(c, pin_read);
+	sm_config_set_in_shift(c, true, true, 8);
+	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_clkdiv_int_frac(c, 250, 0); // 2us/clk
+}
+%}

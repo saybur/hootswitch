@@ -17,10 +17,11 @@
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
 #include "hardware/gpio.h"
 
+#include "bus.h"
 #include "hardware.h"
-#include "relay.h"
 
 static void init_hardware(void)
 {
@@ -37,10 +38,6 @@ static void init_hardware(void)
 	gpio_set_dir(LED_C3_PIN, GPIO_OUT);
 	gpio_init(LED_C4_PIN);
 	gpio_set_dir(LED_C4_PIN, GPIO_OUT);
-#ifdef PICO_DEFAULT_LED_PIN
-	gpio_init(PICO_DEFAULT_LED_PIN);
-	gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-#endif
 
 	// setup input switch
 	gpio_init(SWITCH_PIN);
@@ -88,7 +85,12 @@ static void init_hardware(void)
 int main(void)
 {
 	stdio_init_all();
+	if (cyw43_arch_init()) {
+		printf("ERR: unable to init cyw43, is this a Pico W?");
+		return -1;
+	}
+	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 	init_hardware();
 
-	relay_main();
+	bus_main();
 }

@@ -15,9 +15,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __RELAY_H__
-#define __RELAY_H__
+#ifndef __BUS_H__
+#define __BUS_H__
 
-void relay_main(void);
+#define BUS_ATN_MIN 750
+#define BUS_ATN_MAX 850
+#define BUS_CMD_MAX 900
 
-#endif /* __RELAY_H__ */
+void bus_main(void);
+
+#endif /* __BUS_H__ */
