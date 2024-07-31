@@ -26,16 +26,11 @@
 #include "bus.pio.h"
 
 #define MACHINE_PIO       pio0
-#define DEVICE_PIO        pio1
-#define DEVICE_PIO_SM     0
-#define ECHO_PIO          pio1
-#define ECHO_PIO_SM       1
+#define HOSTING_PIO       pio1
+#define HOSTING_PIO_SM    0
 
 #define MACHINE_COUNT     4
 #define DEVICE_MAX        8
-
-// hard-set for the moment; gets 5us/clock from 125MHz
-#define PIO_CLOCKDIV      625
 
 typedef enum {
 	PHASE_IDLE,
@@ -80,7 +75,7 @@ static BusDevice devices[DEVICE_MAX];
 static BusMachine machines[MACHINE_COUNT];
 
 static uint32_t off_m_pio_tx, off_m_pio_rx,
-		off_h_pio_tx, off_h_pio_rx, off_e_pio;
+		off_h_pio_tx, off_h_pio_rx;
 static pio_sm_config sm_host_tx, sm_host_rx;
 
 static void bus_machine_tick(uint8_t id)
@@ -128,7 +123,7 @@ static void bus_machine_tick(uint8_t id)
 			if (! pio_sm_is_rx_fifo_empty(MACHINE_PIO, id)) {
 				mach->command = pio_sm_get(MACHINE_PIO, id);
 				// look at top 4 bits and see if they match a device
-				if (mach->device_mask & (1U << ((mach->command) >> 4)) {
+				if (mach->device_mask & (1U << ((mach->command) >> 4))) {
 					mach->status = STATUS_COMMANDED;
 				}
 
@@ -200,16 +195,16 @@ void bus_init(void)
 			| C3_DO_PIN_bm
 			| C4_DO_PIN_bm;
 	pio_sm_set_pins_with_mask(MACHINE_PIO, 0, 0, outpin_masks);
-	pio_sm_set_pins_with_mask(DEVICE_PIO, 0, 0, outpin_masks);
+	pio_sm_set_pins_with_mask(HOSTING_PIO, 0, 0, outpin_masks);
 	pio_sm_set_pindirs_with_mask(MACHINE_PIO, 0, outpin_masks, outpin_masks);
-	pio_sm_set_pindirs_with_mask(DEVICE_PIO, 0, outpin_masks, outpin_masks);
+	pio_sm_set_pindirs_with_mask(HOSTING_PIO, 0, outpin_masks, outpin_masks);
 
-	// place all bus drivers in their default PIO instance
+	// place all bus drivers in their PIO instance
 	pio_gpio_init(MACHINE_PIO, C1_DO_PIN);
 	pio_gpio_init(MACHINE_PIO, C2_DO_PIN);
 	pio_gpio_init(MACHINE_PIO, C3_DO_PIN);
 	pio_gpio_init(MACHINE_PIO, C4_DO_PIN);
-	pio_gpio_init(DEVICE_PIO, A_DO_PIN);
+	pio_gpio_init(HOSTING_PIO, A_DO_PIN);
 
 	// setup reading pins
 	gpio_init(A_DI_PIN);
@@ -219,23 +214,22 @@ void bus_init(void)
 	gpio_init(C4_DI_PIN);
 
 	// install PIO instances
-	off_m_pio_tx = pio_add_program(MACHINE_PIO, &bus_tx_program);
-	off_m_pio_rx = pio_add_program(MACHINE_PIO, &bus_rx_program);
-	off_h_pio_tx = pio_add_program(DEVICE_PIO, &bus_tx_host_program);
-	off_h_pio_rx = pio_add_program(DEVICE_PIO, &bus_rx_program);
-	off_e_pio = pio_add_program(DEVICE_PIO, &bus_echo_program);
+	off_m_pio_tx = pio_add_program(MACHINE_PIO, &bus_tx_dev_program);
+	off_m_pio_rx = pio_add_program(MACHINE_PIO, &bus_rx_dev_program);
+	off_h_pio_tx = pio_add_program(HOSTING_PIO, &bus_tx_host_program);
+	off_h_pio_rx = pio_add_program(HOSTING_PIO, &bus_rx_host_program);
 
 	// setup PIO SMs for the machines
 	for (uint8_t i = 0; i < MACHINE_COUNT; i++) {
-		 bus_tx_pio_config(&(machines[i].sm_tx),
+		 bus_tx_dev_pio_config(&(machines[i].sm_tx),
 				off_m_pio_tx, machine_do_pins[i], machine_di_pins[i]);
-		 bus_rx_pio_config(&(machines[i].sm_rx),
-				off_m_pio_rx, machine_di_pins[i]);
+		 bus_rx_dev_pio_config(&(machines[i].sm_rx),
+				off_m_pio_rx, machine_do_pins[i], machine_di_pins[i]);
 	}
 
 	// setup PIO SMs for the device host
 	bus_tx_host_pio_config(&(sm_host_tx), off_h_pio_tx, A_DO_PIN);
-	bus_rx_pio_config(&(sm_host_rx), off_h_pio_rx, A_DI_PIN);
+	bus_rx_host_pio_config(&(sm_host_rx), off_h_pio_rx, A_DI_PIN);
 }
 
 void bus_main(void)

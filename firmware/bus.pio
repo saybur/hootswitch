@@ -20,77 +20,50 @@
 ; Do not change the system clock without updating the clock dividers!
 ; ----------------------------------------------------------------------------
 
-; Drives a pin high or low based on the state of another pin. This is used to
-; 'shadow' the line state between machines or devices.
-;
-; Since side-sets apply immediately when a stall occurs, the below instructions
-; have the effect of setting the output pin low while we wait for the input pin
-; to go high, then releasing output high while we wait for input to go low,
-; repeating indefinitely until stopped.
 
-.program bus_echo
-.side_set 1
-
-.wrap_target
-	wait 1 pin 0  side 1
-	wait 0 pin 0  side 0
-.wrap
-
-% c-sdk {
-static inline void bus_echo_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_out, uint32_t pin_in)
-{
-	*c = bus_echo_program_get_default_config(offset);
-	sm_config_set_in_pins(c, pin_in);
-	sm_config_set_sideset_pins(c, pin_out);
-	sm_config_set_clkdiv_int_frac(c, 10, 0);
-}
-%}
-
-; Writes bits to the bus, including preable/postable. This one is tailored for
-; use when sending data as a client device. It includes:
+; Writes bits from the TX FIFO to a bus, including '1' start bit and the low
+; pulse of the '0' stop bit. This also checks for collisions if configured.
+; This is used when acting as an emulated device, only in response to Talk
+; Register from one of the machines. See the next entry for the version used
+; when operating as a host.
 ;
-; 1) '1' start bit,
-; 2) Whatever message needs to be written,
-; 3) The first portion of the stop bit.
-;
-; This also checks for collisions if configured.
-;
-; Autopull must be used _and_ must have something in it when this is started
+; Autopull must be used and must have something in it when this is started
 ; to avoid stalling at an inopportune location. When the FIFO depletes the
-; stop bit will be sent.
+; stop bit will be sent and an interrupt will be raised on the IRQ bit matching
+; the state machine.
 ;
 ; Collision detection works by checking the state of a pin during a '1' data
-; bit; if it is detected low someone else is sending a '0'; this issues a rel
-; ISR and halts. This feature can be disabled by providing an input pin that is
-; always high (LED output perhaps).
+; bit; if it is detected low someone else is sending a '0' simultaneously. If
+; noted, this halts and raises both the above IRQ and IRQ+4. This feature can
+; be disabled by providing an input pin that is always high.
 
-.program bus_tx
+.program bus_tx_dev
 .side_set 1
 
-	nop side 1 [6]           ; '1' bit low, 35us
-	nop side 0 [12]          ; '1' bit high, 65us
+	nop             side 1 [6]  ; '1' bit low, 35us
+	nop             side 0 [12] ; '1' bit high, 65us
 
-tx_bit:
-	out x, 1 side 1 [5]      ; low 30us, fetch bit value
-	jmp !x tx_0 side 1       ; low +5us, decide if should be released
-	nop side 0 [1]           ; release now, 10us high
-	jmp pin tx_bitend side 0 [3] ; check for collision, +20us high
-	irq wait 0 rel side 0    ; if pin still low, collision: ISR, release, halt
+tx_bs:
+	out x, 1        side 1 [5]  ; low 30us, fetch bit value
+	jmp !x tx_0     side 1      ; low +5us, decide if should be released
+	nop             side 0 [1]  ; release now, 10us high
+	jmp pin tx_be   side 0 [3]  ; check for collision, +20us high
+	irq 4 rel       side 0      ; if pin still low, set flag for collision
+tx_end:
+	irq wait 0 rel  side 0      ; idle pin, stop, let CPU know xmit is done
 tx_0:
-	nop side 0 [5]           ; low +30us
+	nop             side 1 [5]  ; low +30us
 
-tx_bitend:
-	jmp !osre tx_bit side 0 [6] ; +35us high, loop if more data
+tx_be:
+	jmp !osre tx_bs side 0 [6]  ; +35us high, loop if more data
 
-	nop side 1 [12]          ; assert stop bit for 65us
-	nop side 0               ; release and be done
+	jmp tx_end      side 1 [12] ; assert stop bit for 65us then goto end
 
 % c-sdk {
-static inline void bus_tx_pio_config(pio_sm_config *c,
+static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
 {
-	*c = bus_tx_program_get_default_config(offset);
+	*c = bus_tx_dev_program_get_default_config(offset);
 	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_out_shift(c, true, true, 8);
@@ -99,43 +72,45 @@ static inline void bus_tx_pio_config(pio_sm_config *c,
 }
 %}
 
-; Writes bits to the bus, including preable/postable. This version is used when
-; acting as a bus host (aka 'machine' in this program's lingo). It is mostly
-; identical to above except for the following:
+
+; Writes bits from the TX FIFO to the device bus, including preable/postable.
+; This version is used when acting as a host with native peripherals. It is
+; similar to `bus_tx_dev` except for the following:
 ;
 ; 1) The start will be attention with sync _or_ '1' start bit, depending on
 ;    what offset is used,
-; 2) Collision checking is not applied.
+; 2) Collision checking is not applied since hosts do not need it.
 ;
-; Otherwise the notes in the above version apply. The split between the two is
-; useful to save a few instructions when these are in different PIO units.
+; Otherwise the notes in the other version apply. These exist on different PIO
+; units, so the differences help shave off a few instructions.
 ;
-; The normal offset for this is the '1' bit for sending data. Starting at
-; (offset + 2) gets attention/sync instead.
+; This version is used both during the command phase and when issuing a Listen
+; Register data operation. The normal offset is the '1' bit for sending data.
+; Starting at (offset + 2) gets attention/sync instead for commands.
 
 .program bus_tx_host
 .side_set 1
 
-	nop side 1 [6]           ; '1' bit low, 35us
-	jmp txh_bit side 0 [12]  ; '1' bit high, 65us
+	nop             side 1 [6]  ; '1' bit low, 35us
+	jmp txh_bs      side 0 [12] ; '1' bit high, 65us
 
-	set x, 15 side 0         ; --- entry point for attention/sync
+	set x, 15       side 0      ; <- entry point for attention/sync
 txh_atn:
 	jmp x-- txh_atn side 1 [10] ; attention, 800us low
-	nop side 0 [13]          ; sync, 70us high
+	nop             side 0 [13] ; sync, 70us high
 
-txh_bit:
-	out x, 1 side 1 [5]      ; low 30us, fetch bit value
-	jmp !x txh_0 side 1      ; low +5us, decide if should be released
-	jmp pin txh_bitend side 0 [5] ; release now, 30us high
+txh_bs:
+	out x, 1        side 1 [5]  ; low 30us, fetch bit value
+	jmp !x txh_0    side 1      ; low +5us, decide if should be released
+	jmp txh_be      side 0 [5]  ; release now, 30us high
 txh_0:
-	nop side 0 [5]           ; low +30us
+	nop             side 0 [5]  ; low +30us
 
-txh_bitend:
-	jmp !osre txh_bit side 0 [6] ; +35us high, loop if more data
+txh_be:
+	jmp !osre txh_bs side 0 [6] ; +35us high, loop if more data
 
-	nop side 1 [12]          ; assert stop bit for 65us
-	nop side 0               ; release and be done
+	nop             side 1 [12] ; assert stop bit for 65us
+	irq wait 0 rel  side 0      ; release and be done
 
 % c-sdk {
 static inline void bus_tx_host_pio_config(pio_sm_config *c,
@@ -149,40 +124,111 @@ static inline void bus_tx_host_pio_config(pio_sm_config *c,
 }
 %}
 
-; Reads bits from the bus. This is used for both command and data reading.
-; Will work both when we are the exclusive listener and when the bus is being
-; snooped.
-;
-; This needs autopush enabled to get results. Should be started while the line
-; is high on the '1' bit or sync signal of the relevant transaction. This will
-; stall until a count for the number of bits is provided, likely a good idea to
-; set that before starting.
-;
-; When exclusive reading we likely know the size of a data register. However,
-; when snooping they could be shorter/longer than expected: this will stall
-; waiting for the line to change, so set the autopush to the least likely
-; multiple (probably 8) unless you're confident of what will appear.
-;
-; In general it is not necessary to ask for the stop bit, this will just end
-; early if it gets enough data.
 
-.program bus_rx
+; Reads bits from a connected machine. Should be started while the line is high
+; on the sync signal or Tlt of the relevant transaction.
+;
+; Unlike the above (sloppy) reading method this one relies on hosts having no
+; more than +/- 3% timing deviation, which makes processing much simpler.
+;
+; The decision to issue a SRQ depends on knowledge of state beyond what PIO
+; is (probably) capable of, so as soon as the stop bit assertion begins this
+; does the following:
+;
+; 1) A non-wait IRQ is triggered to get the CPU's attention.
+; 2) This waits for about 50us, then pulls from the TX FIFO.
+; 3) If a value is in the TX FIFO this will drive the output line low for the
+;    time requested (value * 3us, 78 is a reasonable value) then re-issue the
+;    IRQ and wait.
+; 4) If no value is in the TX FIFO the pull will instead block, not touching
+;    the output line.
+;
+; This version is used both during the command phase and Listen Register data
+; operations. The normal offset will discard the '1' start bit. Starting at
+; (offset + 2) should be used during commands.
 
-	out x, 8                ; load the number of bits to read
-rx_bit:
-	wait 0 pin 0 [24]       ; wait for line to go low, then 50us to center
-	in pins, 1              ; fetch line state
-	wait 1 pin 0            ; wait for line to go high (might be already)
-	jmp x-- rx_bit          ; loop if expecting more data
+.program bus_rx_dev
+.side_set 1
+
+	wait 0 pin 0    side 0      ; discard '1' start bit if needed
+	wait 1 pin 0    side 0
+
+	out x, 8        side 0      ; load the counter for how many bits to read
+rx_b:
+	wait 0 pin 0    side 0 [14] ; wait for line to go low, then ~50us to center
+	in pins, 1      side 0      ; fetch line state
+	wait 1 pin 0    side 0      ; wait for line to go high (might be already)
+	jmp x-- rx_b    side 0 [1]  ; loop if expecting more data
+
+	wait 0 pin 0    side 0      ; wait until the stop bit begins
+	irq 0 rel       side 0 [15] ; notify CPU we are at stop bit & wait ~50us
+	out x, 8        side 0      ; load SRQ duration, or stall if not provided
+rx_s:
+	jmp x-- rx_s    side 1      ; drive SRQ
+	irq wait 0 rel  side 0      ; release and re-notify
+.wrap
 
 % c-sdk {
-static inline void bus_rx_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_read)
+static inline void bus_rx_dev_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
 {
-	*c = bus_rx_program_get_default_config(offset);
+	*c = bus_rx_dev_program_get_default_config(offset);
 	sm_config_set_in_pins(c, pin_read);
+	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_in_shift(c, true, true, 8);
 	sm_config_set_out_shift(c, true, true, 8);
-	sm_config_set_clkdiv_int_frac(c, 250, 0); // 2us/clk
+	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
+}
+%}
+
+
+; Reads bits from the bus when getting a device's response. This is used by the
+; host implementation during the response to Talk Register issued by a native
+; device.
+;
+; The bus protocol for devices is loose, allowing a +/- 30% deviation from
+; nominal timings. To accomodate oddball devices, this routine counts the
+; duration of the low & high parts of a bit pulse and pushes the timing values
+; into the RX FIFO for later interpretation by the CPU as '0' and '1' based on
+; which was dominant.
+;
+; The 'max countdown' to submit should generally be 40-50% more than the
+; maximum possible time between transitions at the 0.4us/clk this operates
+; at; so something like 240 should be fine.
+;
+; This is written with the ability to be modified with a side-set pin if bus
+; mirroring is ever implemented. Ideally make changes with this in mind.
+
+.program bus_rx_host
+
+	out y, 8                    ; load max countdown from TX FIFO via autopull
+rx_ds:
+	jmp pin rx_ds               ; unconditionally wait for Tlt to end
+
+.wrap_target
+	mov x, y                    ; setup countdown
+rx_dl:
+	jmp pin rx_dhst             ; execute jump once pin goes high
+	jmp x-- rx_dl               ; otherwise decrement
+rx_dhst:
+	in x, 8                     ; store what's left of low count
+	mov x, y                    ; reload countdown for high side of bit
+rx_dh:
+	jmp x-- rx_dhnt             ; skip next until we time out
+	irq wait 0 rel              ; timed out, notify CPU of data phase end
+rx_dhnt:
+	jmp pin rx_dh               ; loop until pin goes low again
+	in x, 8                     ; pin low, on to next bit: store and loop back
+.wrap
+
+% c-sdk {
+static inline void bus_rx_host_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_read)
+{
+	*c = bus_rx_host_program_get_default_config(offset);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_in_shift(c, true, true, 8);
+	sm_config_set_out_shift(c, true, true, 16);
+	sm_config_set_clkdiv_int_frac(c, 50, 0); // 0.4us/clk
 }
 %}
