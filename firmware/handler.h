@@ -15,12 +15,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico/stdlib.h"
+#ifndef __HANDLER_H__
+#define __HANDLER_H__
 
-#include "bus.h"
-#include "hardware.h"
+#include <stdint.h>
 
-void bus_init(void)
-{
+uint16_t handler_talk_reg3(uint8_t mach);
+void handler_listen_reg3(uint8_t mach, uint16_t reg3);
 
-}
+#endif /* __HANDLER_H__ */

@@ -21,7 +21,10 @@
 #include "hardware/gpio.h"
 
 #include "bus.h"
+#include "device.h"
+#include "host.h"
 #include "hardware.h"
+#include "manager.h"
 
 static void init_hardware(void)
 {
@@ -46,51 +49,18 @@ static void init_hardware(void)
 	// setup buzzer
 	gpio_init(BUZZER_PIN);
 	gpio_set_dir(BUZZER_PIN, GPIO_OUT);
-
-	// setup the 'host' port
-	gpio_init(A_DO_PIN);
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	gpio_set_dir(A_DO_PIN, GPIO_OUT);
-	gpio_init(A_DI_PIN);
-
-	// computer 1
-	gpio_init(C1_DO_PIN);
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	gpio_set_dir(C1_DO_PIN, GPIO_OUT);
-	gpio_init(C1_DI_PIN);
-	gpio_init(C1_PSW_PIN);
-
-	// computer 2
-	gpio_init(C2_DO_PIN);
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	gpio_set_dir(C2_DO_PIN, GPIO_OUT);
-	gpio_init(C2_DI_PIN);
-	gpio_init(C2_PSW_PIN);
-
-	// computer 3
-	gpio_init(C3_DO_PIN);
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	gpio_set_dir(C3_DO_PIN, GPIO_OUT);
-	gpio_init(C3_DI_PIN);
-	gpio_init(C3_PSW_PIN);
-
-	// computer 4
-	gpio_init(C4_DO_PIN);
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	gpio_set_dir(C4_DO_PIN, GPIO_OUT);
-	gpio_init(C4_DI_PIN);
-	gpio_init(C4_PSW_PIN);
 }
 
 int main(void)
 {
 	stdio_init_all();
 	if (cyw43_arch_init()) {
-		printf("ERR: unable to init cyw43, is this a Pico W?");
-		return -1;
+		panic("unable to init cyw43, is this a Pico W?");
 	}
 	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-	init_hardware();
 
-	bus_main();
+	init_hardware();
+	manager_main();
+
+	while (1) tight_loop_contents();
 }

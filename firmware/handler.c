@@ -15,12 +15,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico/stdlib.h"
+#include "handler.h"
 
-#include "bus.h"
-#include "hardware.h"
+/*
+ * Resolves commands from the connected machines. This acts as a central
+ * dispatcher that takes generic bus commands, like "Talk Register 0" to a
+ * device with handler 0x03, and translates those to instructions that are
+ * more appropriate for an emulated device.
+ */
 
-void bus_init(void)
+uint16_t handler_talk_reg3(uint8_t mach)
 {
+	
+}
 
+void handler_listen_reg3(uint8_t mach, uint16_t reg3)
+{
+	
 }

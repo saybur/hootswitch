@@ -15,12 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico/stdlib.h"
+#ifndef __HOST_H__
+#define __HOST_H__
 
-#include "bus.h"
-#include "hardware.h"
+void host_init(void);
 
-void bus_init(void)
-{
-
-}
+#endif /* __HOST_H__ */

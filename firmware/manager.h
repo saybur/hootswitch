@@ -15,12 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico/stdlib.h"
+#ifndef __MANAGER_H__
+#define __MANAGER_H__
 
-#include "bus.h"
-#include "hardware.h"
+void manager_main(void);
 
-void bus_init(void)
-{
-
-}
+#endif /* __MANAGER_H__ */

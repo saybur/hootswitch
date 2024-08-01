@@ -11,11 +11,11 @@ add_executable(hootswitch)
 pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 
 target_sources(hootswitch PRIVATE
-        bus.c main.c
+        bus.c device.c handler.c host.c manager.c main.c
         )
 
 target_link_libraries(hootswitch
-		pico_stdlib hardware_pio pico_cyw43_arch_none
+		pico_stdlib pico_rand pico_cyw43_arch_none hardware_pio
 		)
 
 # create map/bin/hex file etc.

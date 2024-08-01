@@ -15,12 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico/stdlib.h"
+#ifndef __DEVICE_H__
+#define __DEVICE_H__
 
-#include "bus.h"
-#include "hardware.h"
+void device_init(void);
 
-void bus_init(void)
-{
-
-}
+#endif /* __DEVICE_H__ */

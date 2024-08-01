@@ -18,9 +18,28 @@
 #include "pico/stdlib.h"
 
 #include "bus.h"
+#include "device.h"
+#include "host.h"
 #include "hardware.h"
+#include "manager.h"
 
-void bus_init(void)
+/*
+ * Manager for the ADB subsystem. This is conceptually similar to handler.c but
+ * is used in the opposite direction: it actively manages the connected native
+ * devices, pulling their information and storing it for use by the connected
+ * machines.
+ *
+ * Because of the periodic polling required, this is also a convenient location
+ * for the core1 main(). That will not be enabled until the program is further
+ * along but the code is still here as though it will be later.
+ */
+
+void manager_main(void)
 {
+	// perform initialization
+	bus_init();
+	host_init();
+	device_init();
 
+	while (1) tight_loop_contents();
 }

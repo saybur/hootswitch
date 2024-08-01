@@ -15,27 +15,41 @@
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ;
 
+;
+; This file has definitions for ADB bus fuctions using PIO on the RP2040, both
+; for host and device implementations. Combined with some timer alarms, this
+; allows tracking buses without using much CPU time.
+;
+; Each bus port will need at least one state machine. ADB is slow enough you
+; have time to swap PIO programs in and out, which is the technique Hootswitch
+; uses for managing a relatively large number of ports.
+;
+; See the rest of the C code for working examples. I could see this being
+; interesting to other projects, so if you see areas where things are
+; inefficient, badly documented, or just plain wrong please open a PR :)
+;
 ; ----------------------------------------------------------------------------
 ; For simplicity these functions are all hard-coded to use a 125MHz main clock.
 ; Do not change the system clock without updating the clock dividers!
 ; ----------------------------------------------------------------------------
 
 
-; Writes bits from the TX FIFO to a bus, including '1' start bit and the low
-; pulse of the '0' stop bit. This also checks for collisions if configured.
+; Writes data bits from the TX FIFO to a bus, including a '1' start bit and the
+; low pulse of the '0' stop bit. This also checks for collisions if configured.
 ; This is used when acting as an emulated device, only in response to Talk
 ; Register from one of the machines. See the next entry for the version used
 ; when operating as a host.
 ;
-; Autopull must be used and must have something in it when this is started
-; to avoid stalling at an inopportune location. When the FIFO depletes the
-; stop bit will be sent and an interrupt will be raised on the IRQ bit matching
-; the state machine.
+; The TX FIFO must have something in it when this is started to avoid stalling
+; at an inopportune location. When the FIFO depletes the stop bit will be sent
+; and an interrupt will be raised on the IRQ bit matching the state machine.
+; The FIFO is joined so has enough space for 8 bytes of data, which is the most
+; the protocol allows anyway.
 ;
-; Collision detection works by checking the state of a pin during a '1' data
-; bit; if it is detected low someone else is sending a '0' simultaneously. If
-; noted, this halts and raises both the above IRQ and IRQ+4. This feature can
-; be disabled by providing an input pin that is always high.
+; Collision detection works by checking the state of a given pin during a '1'
+; data bit. If it is detected low someone else is sending a '0' simultaneously;
+; this will halt and raise both the above IRQ and IRQ+4. This feature can be
+; disabled by providing an input pin that is always high.
 
 .program bus_tx_dev
 .side_set 1
@@ -73,20 +87,25 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 %}
 
 
-; Writes bits from the TX FIFO to the device bus, including preable/postable.
-; This version is used when acting as a host with native peripherals. It is
-; similar to `bus_tx_dev` except for the following:
+; Writes command or data bits from the TX FIFO to the bus, including the
+; preable/postable. This version is used when acting as a host. It is similar
+; to the above one except for the following:
 ;
 ; 1) The start will be attention with sync _or_ '1' start bit, depending on
 ;    what offset is used,
 ; 2) Collision checking is not applied since hosts do not need it.
 ;
-; Otherwise the notes in the other version apply. These exist on different PIO
-; units, so the differences help shave off a few instructions.
+; Otherwise the notes in the other version apply. The design of these is quite
+; similar so you could potentially merge them; on Hootswitch these exist on
+; different PIO units, so the differences help shave off a few instructions.
 ;
-; This version is used both during the command phase and when issuing a Listen
-; Register data operation. The normal offset is the '1' bit for sending data.
-; Starting at (offset + 2) gets attention/sync instead for commands.
+; This is used both during the command phase and when issuing a Listen Register
+; data operation. The normal offset is the '1' bit for sending data. Starting
+; at (offset + 2) gets attention/sync instead for commands.
+;
+; For attention/sync, you need to provide an initial TX FIFO value for the
+; length of the low pulse. For regular attention a value of 15 is appropriate
+; ((15+1)*50=800). To make this a reset pulse use 59 instead.
 
 .program bus_tx_host
 .side_set 1
@@ -94,7 +113,7 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 	nop             side 1 [6]  ; '1' bit low, 35us
 	jmp txh_bs      side 0 [12] ; '1' bit high, 65us
 
-	set x, 15       side 0      ; <- entry point for attention/sync
+	out x, 8        side 0      ; <- entry point for attention/sync
 txh_atn:
 	jmp x-- txh_atn side 1 [10] ; attention, 800us low
 	nop             side 0 [13] ; sync, 70us high
@@ -110,7 +129,7 @@ txh_be:
 	jmp !osre txh_bs side 0 [6] ; +35us high, loop if more data
 
 	nop             side 1 [12] ; assert stop bit for 65us
-	irq wait 0 rel  side 0      ; release and be done
+	irq wait 0      side 0      ; release and be done
 
 % c-sdk {
 static inline void bus_tx_host_pio_config(pio_sm_config *c,
@@ -125,11 +144,11 @@ static inline void bus_tx_host_pio_config(pio_sm_config *c,
 %}
 
 
-; Reads bits from a connected machine. Should be started while the line is high
-; on the sync signal or Tlt of the relevant transaction.
+; Reads bits from a connected machine to the RX FIFO. Should be started while
+; the line is high on the sync signal or Tlt of the relevant transaction.
 ;
-; Unlike the above (sloppy) reading method this one relies on hosts having no
-; more than +/- 3% timing deviation, which makes processing much simpler.
+; Unlike the following reading method this one relies on hosts having no more
+; than +/- 3% timing deviation, which makes processing much simpler.
 ;
 ; The decision to issue a SRQ depends on knowledge of state beyond what PIO
 ; is (probably) capable of, so as soon as the stop bit assertion begins this
@@ -182,42 +201,94 @@ static inline void bus_rx_dev_pio_config(pio_sm_config *c,
 %}
 
 
-; Reads bits from the bus when getting a device's response. This is used by the
-; host implementation during the response to Talk Register issued by a native
+; Listens to the bus for attention/reset, interrupting the CPU when a signal of
+; interest is detected. This provides a CPU-free way to both seek that specific
+; (long) signal and ignore transactions we don't care about, like machine/non-
+; owned device chatter.
+
+.program bus_atn_dev
+
+	out y, 16                   ; pull in the countdown value
+atn_no:
+	wait 0 pin 0                ; wait for the line to drive low
+	mov x, y                    ; reset countdown
+atn_cnt:
+	jmp pin atn_no              ; if pin goes high before expire, try again
+	jmp x-- atn_cnt             ; tick down
+
+atn_yes:
+	jmp pin atn_done            ; made it past minimum, wait to go high
+	jmp x-- atn_yes             ; until we do, countdown with overflowed X
+atn_done:
+	in x, 16                    ; store and be done
+	irq wait 0 rel
+
+% c-sdk {
+static inline void bus_atn_dev_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_read)
+{
+	*c = bus_atn_dev_program_get_default_config(offset);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_out_shift(c, true, true, 16);
+	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
+}
+%}
+
+
+; Reads bits from a device's response into the RX FIFO. This is used by the
+; host implementation while listening to Talk Register issued by a native
 ; device.
 ;
 ; The bus protocol for devices is loose, allowing a +/- 30% deviation from
-; nominal timings. To accomodate oddball devices, this routine counts the
+; nominal timings. To accomodate oddball devices this routine counts the
 ; duration of the low & high parts of a bit pulse and pushes the timing values
 ; into the RX FIFO for later interpretation by the CPU as '0' and '1' based on
-; which was dominant.
+; which was dominant. Outputs are 16-bit words, structured like this:
 ;
-; The 'max countdown' to submit should generally be 40-50% more than the
-; maximum possible time between transitions at the 0.4us/clk this operates
-; at; so something like 240 should be fine.
+; - If (v >> 8) < (v & 0xFF), '0' bit
+; - If (v >> 8) > (v & 0xFF), '1' bit
 ;
-; This is written with the ability to be modified with a side-set pin if bus
-; mirroring is ever implemented. Ideally make changes with this in mind.
+; Timeouts here are common, both due to Tlt expiring without a transmission and
+; the remote device stopping a data transfer. To avoid a deadlock two
+; mechanisms are used:
+;
+; 1) A countdown value is used both to measure the length of the pulses and
+;    establish a maximum after which a timeout is registered; submit a value of
+;    225 in almost all cases, which produces a line-idle timeout of 90us and a
+;    Tlt max of 270us, both quite generous to slow devices.
+; 2) Outside the PIO, an alarm should be set up for the maximum possible xmit
+;    time.
+;
+; This pushes somewhat frequently; suggest using a DMA unit to route the data
+; somewhere convenient to save on CPU time.
 
 .program bus_rx_host
 
 	out y, 8                    ; load max countdown from TX FIFO via autopull
-rx_ds:
-	jmp pin rx_ds               ; unconditionally wait for Tlt to end
+	mov x, y                    ; setup for Tlt timeout
+rxh_tlt:
+	jmp x-- rxh_tlt_nto         ; countdown to max Tlt
+	irq wait 0 rel              ; stop, inform CPU of timeout
+rxh_tlt_nto:
+	jmp pin rxh_tlt             ; if high, continue waiting for Tlt to end
+
+	wait 1 pin 0                ; wait for '1' bit low to end
+	wait 0 pin 0                ; wait for '1' bit high to end
 
 .wrap_target
 	mov x, y                    ; setup countdown
-rx_dl:
-	jmp pin rx_dhst             ; execute jump once pin goes high
-	jmp x-- rx_dl               ; otherwise decrement
-rx_dhst:
+rxh_l:
+	jmp pin rxh_hs              ; execute jump once pin goes high
+	jmp x-- rxh_l               ; otherwise decrement
+	irq wait 0 rel              ; if we get here, timed out low, phase error?
+rxh_hs:
 	in x, 8                     ; store what's left of low count
 	mov x, y                    ; reload countdown for high side of bit
-rx_dh:
-	jmp x-- rx_dhnt             ; skip next until we time out
+rxh_hi:
+	jmp x-- rxh_hnt             ; skip next until we time out
 	irq wait 0 rel              ; timed out, notify CPU of data phase end
-rx_dhnt:
-	jmp pin rx_dh               ; loop until pin goes low again
+rxh_hnt:
+	jmp pin rxh_hi              ; loop until pin goes low again
 	in x, 8                     ; pin low, on to next bit: store and loop back
 .wrap
 
