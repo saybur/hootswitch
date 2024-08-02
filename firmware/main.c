@@ -60,7 +60,9 @@ int main(void)
 	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 
 	init_hardware();
-	manager_main();
+	bus_init();
+	host_init();
+	device_init();
 
 	while (1) tight_loop_contents();
 }

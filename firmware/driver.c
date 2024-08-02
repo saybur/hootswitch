@@ -15,16 +15,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __HANDLER_H__
-#define __HANDLER_H__
+#include "pico/stdlib.h"
 
-#include <stdint.h>
+#include "bus.h"
+#include "device.h"
+#include "driver.h"
+#include "host.h"
+#include "hardware.h"
 
-typedef struct {
-	uint8_t address_def;
-	uint8_t address_cur;
-	uint8_t handle_def;
-	uint8_t handle_cur;
-} ndev_info;
+uint8_t driver_register(dev_driver driver)
+{
+	(void) driver;
+	// TODO implement
+}
 
-#endif /* __HANDLER_H__ */
+void driver_poll(void)
+{
+	// TODO implement
+}
