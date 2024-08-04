@@ -15,30 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __BUS_H__
-#define __BUS_H__
+#ifndef __DEBUG_H__
+#define __DEBUG_H__
 
-#define BUS_ATN_MIN 750
-#define BUS_ATN_MAX 850
+void dbg(const char *s, ...);
 
-typedef enum {
-	PHASE_IDLE,
-	PHASE_ATTENTION,
-	PHASE_COMMAND,
-	PHASE_SRQ,
-	PHASE_TLT,
-	PHASE_DATA_OUT,
-	PHASE_DATA_IN
-} bus_phase;
-
-typedef enum {
-	STATUS_FAULT,             // lost track of bus phase
-	STATUS_RESET,             // machine issued reset
-	STATUS_COMMANDED,         // pending command
-	STATUS_DATA_RECV,         // pending data to parse
-	STATUS_NORMAL
-} bus_status;
-
-void bus_init(void);
-
-#endif /* __BUS_H__ */
+#endif /* __DEBUG_H__ */

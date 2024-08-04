@@ -15,30 +15,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __BUS_H__
-#define __BUS_H__
+#include <stdio.h>
+#include <stdarg.h>
 
-#define BUS_ATN_MIN 750
-#define BUS_ATN_MAX 850
+#include "pico/stdlib.h"
 
-typedef enum {
-	PHASE_IDLE,
-	PHASE_ATTENTION,
-	PHASE_COMMAND,
-	PHASE_SRQ,
-	PHASE_TLT,
-	PHASE_DATA_OUT,
-	PHASE_DATA_IN
-} bus_phase;
+#include "debug.h"
 
-typedef enum {
-	STATUS_FAULT,             // lost track of bus phase
-	STATUS_RESET,             // machine issued reset
-	STATUS_COMMANDED,         // pending command
-	STATUS_DATA_RECV,         // pending data to parse
-	STATUS_NORMAL
-} bus_status;
+void dbg(const char *format, ...)
+{
+	printf("[%08x] dbg: ", time_us_32());
 
-void bus_init(void);
-
-#endif /* __BUS_H__ */
+	// thanks to https://stackoverflow.com/a/20639708 for this technique!
+	va_list args;
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+}

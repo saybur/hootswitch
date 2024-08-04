@@ -106,6 +106,11 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 ; For attention/sync, you need to provide an initial TX FIFO value for the
 ; length of the low pulse. For regular attention a value of 15 is appropriate
 ; ((15+1)*50=800). To make this a reset pulse use 59 instead.
+;
+; All versions of this will sample the line after releasing it the final time.
+; If it is still detected low, rel IRQ+4 is set and this waits until the line
+; goes high again before returning. This is useful to detect SRQ during
+; commands and (far less likely) finding spurious line errors.
 
 .program bus_tx_host
 .side_set 1
@@ -115,7 +120,7 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 
 	out x, 8        side 0      ; <- entry point for attention/sync
 txh_atn:
-	jmp x-- txh_atn side 1 [10] ; attention, 800us low
+	jmp x-- txh_atn side 1 [9]  ; attention, 800us low
 	nop             side 0 [13] ; sync, 70us high
 
 txh_bs:
@@ -123,20 +128,27 @@ txh_bs:
 	jmp !x txh_0    side 1      ; low +5us, decide if should be released
 	jmp txh_be      side 0 [5]  ; release now, 30us high
 txh_0:
-	nop             side 0 [5]  ; low +30us
+	nop             side 1 [5]  ; low +30us
 
 txh_be:
 	jmp !osre txh_bs side 0 [6] ; +35us high, loop if more data
 
 	nop             side 1 [12] ; assert stop bit for 65us
-	irq wait 0      side 0      ; release and be done
+	nop             side 0 [7]  ; wait 40us
+	jmp pin txh_e   side 0      ; skip to end if line high
+	irq 4 rel       side 0      ; otherwise set the SRQ detection flag
+	wait 1 pin 0    side 0      ; then wait for the line to go high
+txh_e:
+	irq wait 0 rel  side 0      ; done
 
 % c-sdk {
 static inline void bus_tx_host_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_write)
+		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
 {
 	*c = bus_tx_host_program_get_default_config(offset);
 	sm_config_set_sideset_pins(c, pin_write);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_out_shift(c, true, true, 8);
 	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
 	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk

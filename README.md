@@ -56,7 +56,8 @@ openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
 ```
 
 For a proper debugging session, start the OpenOCD server by omitting the last
-`-c` argument above.
+`-c` argument above. You will want to invoke `cmake` with
+`-DCMAKE_BUILD_TYPE=Debug` .
 
 In another terminal, run `gdb-multiarch hootswitch.elf`. Connect to the device
 with `target remote localhost:3333` (or automate this step via `~/.gdbinit`).
@@ -69,9 +70,10 @@ _most definitely_ not an authority on `gdb`):
 * `print X` prints information about something, including variables.
 * `br X` adds a breakpoint at X, `del` removes one or more.
 * `continue` will proceed, stopping at breakpoints; Ctrl-C halts.
+* `finish` completes a function.
 * `bt` prints a backtrace, `bt f` prints a backtrace with symbols.
 * `i r` prints registers.
-* `finish` completes a function.
+* `p X` prints variable X.
 
 Licenses
 --------

@@ -21,34 +21,28 @@
 #include "hardware/gpio.h"
 
 #include "bus.h"
+#include "buzzer.h"
+#include "debug.h"
 #include "device.h"
 #include "host.h"
 #include "hardware.h"
+#include "led.h"
 #include "manager.h"
+
+#define PROGRAM_NAME   "hootswitch-v20240803"
 
 static void init_hardware(void)
 {
-	// setup LEDs
-	gpio_init(LED_ERR_PIN);
-	gpio_set_dir(LED_ERR_PIN, GPIO_OUT);
-	gpio_init(LED_ACT_PIN);
-	gpio_set_dir(LED_ACT_PIN, GPIO_OUT);
-	gpio_init(LED_C1_PIN);
-	gpio_set_dir(LED_C1_PIN, GPIO_OUT);
-	gpio_init(LED_C2_PIN);
-	gpio_set_dir(LED_C2_PIN, GPIO_OUT);
-	gpio_init(LED_C3_PIN);
-	gpio_set_dir(LED_C3_PIN, GPIO_OUT);
-	gpio_init(LED_C4_PIN);
-	gpio_set_dir(LED_C4_PIN, GPIO_OUT);
+	led_init();
+	led_activity(true);
+
+	buzzer_init();
+	host_init();
+	device_init();
 
 	// setup input switch
 	gpio_init(SWITCH_PIN);
 	gpio_pull_up(SWITCH_PIN);
-
-	// setup buzzer
-	gpio_init(BUZZER_PIN);
-	gpio_set_dir(BUZZER_PIN, GPIO_OUT);
 }
 
 int main(void)
@@ -60,9 +54,12 @@ int main(void)
 	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 
 	init_hardware();
-	bus_init();
-	host_init();
-	device_init();
+
+	// wait for USB enumeration, and for ADB devices to power up themselves up
+	busy_wait_ms(1600);
+	dbg(PROGRAM_NAME);
+
+	host_reset();
 
 	while (1) tight_loop_contents();
 }

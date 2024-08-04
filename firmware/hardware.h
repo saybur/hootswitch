@@ -23,6 +23,17 @@
  *     PIN DEFINITIONS
  *   Change these to match your hardware.
  * ----------------------------------------------------------------------------
+ *
+ * The RP2040 has fewer "gotchas" than other MCUs but there still are some
+ * limitations to be aware of if you're trying a new board spin:
+ *
+ * - LEDs should not be on PWMs shared with other periphals that use the PWM
+ *   system, such as the buzzer, or you will need to adjust the LED driving
+ *   code.
+ * - Generally try to have the _DO lines on PWM_CHB (odd GPIOs), they are the
+ *   only ones with duty cycle / frequency measuring. This is not currently
+ *   implemented, PIO handles all that stuff, but it might be useful in the
+ *   future.
  */
 
 #define LED_ERR_PIN         0
@@ -62,9 +73,14 @@
 
 // "host" refers to the connection with the native peripherals on the front
 #define HOST_PIO            pio1
+#define HOST_PIO_IRQ0       PIO1_IRQ_0
 
-#define MACHINE_TIMER       3
-#define HOST_TIMER          4
+#define BUZZER_TIMER        2
+#define BUZZER_TIMER_IRQ    TIMER_IRQ_2
+#define MACHINE_TIMER       1
+#define MACHINE_TIMER_IRQ   TIMER_IRQ_1
+#define HOST_TIMER          0
+#define HOST_TIMER_IRQ      TIMER_IRQ_0
 
 #define A_DO_PIN_bm         (1U << A_DO_PIN)
 #define C1_DO_PIN_bm        (1U << C1_DO_PIN)

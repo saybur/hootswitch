@@ -23,13 +23,36 @@
 #include "host.h"
 #include "hardware.h"
 
-uint8_t driver_register(dev_driver driver)
+static volatile dev_driver drivers[DRIVER_MAXIMUM];
+static volatile uint8_t driver_count;
+
+uint8_t driver_register(uint8_t *dev_id, dev_driver *driver)
 {
-	(void) driver;
-	// TODO implement
+	if (driver == NULL || dev_id == NULL) {
+		return 2;
+	}
+
+	if (driver_count < DRIVER_MAXIMUM) {
+		*dev_id = driver_count;
+		drivers[driver_count++] = *driver;
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+void driver_get(uint8_t dev, dev_driver *driver)
+{
+	if (dev < driver_count) {
+		*driver = drivers[dev];
+	} else {
+		driver = NULL;
+	}
 }
 
 void driver_poll(void)
 {
-	// TODO implement
+	for (uint8_t i = 0; i < driver_count; i++) {
+		drivers[i].poll();
+	}
 }

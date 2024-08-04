@@ -24,6 +24,7 @@
 #include "bus.h"
 #include "bus.pio.h"
 #include "device.h"
+#include "driver.h"
 #include "hardware.h"
 
 /*
@@ -42,18 +43,18 @@
  */
 
 #define DEVICE_WATCHDOG_TICKS   1000
-#define DEVICE_WATCHDOG_RESET   5000
 
 typedef struct {
 	bool active;              // true if this is the user-selected machine
-	BusPhase phase;
-	BusStatus status;
+	bus_phase phase;
+	bus_status status;
 	uint32_t pin_out;         // GPIO number of line driving pin
 	uint32_t pin_in;          // GPIO number of line listening pin
-	uint16_t device_mask;     // bitmask for devices active on this machine
+	dev_driver *drivers[DRIVER_MAXIMUM];
 	uint64_t time;            // multiple use, generally when the phase started
+	uint32_t timeout;         // threshold to register a timeout (non-idle)
 	uint8_t command;          // last command received if STATUS_COMMANDED
-	uint16_t message;         // last message received if STATUS_DATA_RECV
+	uint8_t message[8];       // message buffer for commands
 } machine;
 
 const uint32_t machine_do_pins[] = {
@@ -79,24 +80,18 @@ static uint8_t rand_idx;
 
 static void device_watchdog(unsigned int alarm_num)
 {
-	uint32_t time = time_us_32();
-	for (uint8_t i = 0; i < MACHINE_COUNT; i++) {
-		if (machines[i].phase != PHASE_IDLE
-				&& time - machines[i].time > DEVICE_WATCHDOG_RESET) {
-// TODO handle
-		}
-	}
+
 }
 
 static void device_pio_isr(void)
 {
-	
+
 }
 
 void device_init(void)
 {
-	assert(sizeof(machine_do_pins) == MACHINE_COUNT);
-	assert(sizeof(machine_di_pins) == MACHINE_COUNT);
+	assert(sizeof(machine_do_pins) / 4 == MACHINE_COUNT);
+	assert(sizeof(machine_di_pins) / 4 == MACHINE_COUNT);
 
 	/*
 	 * Per https://www.raspberrypi.com/documentation/pico-sdk/high_level.html
@@ -175,8 +170,6 @@ void device_init(void)
 	off_pio_tx = pio_add_program(MACHINE_PIO, &bus_tx_dev_program);
 	off_pio_rx = pio_add_program(MACHINE_PIO, &bus_rx_dev_program);
 	off_pio_atn = pio_add_program(MACHINE_PIO, &bus_atn_dev_program);
-
-
 }
 
 /*
@@ -184,9 +177,5 @@ void device_init(void)
  */
 void device_start(void)
 {
-	uint32_t mask = GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE;
-	gpio_set_irq_enabled(C1_DI_PIN, mask, true);
-	gpio_set_irq_enabled(C2_DI_PIN, mask, true);
-	gpio_set_irq_enabled(C3_DI_PIN, mask, true);
-	gpio_set_irq_enabled(C4_DI_PIN, mask, true);
+
 }
