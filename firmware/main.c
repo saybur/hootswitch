@@ -24,6 +24,7 @@
 #include "buzzer.h"
 #include "debug.h"
 #include "device.h"
+#include "driver.h"
 #include "host.h"
 #include "hardware.h"
 #include "led.h"
@@ -59,7 +60,14 @@ int main(void)
 	busy_wait_ms(1600);
 	dbg(PROGRAM_NAME);
 
+	handler_init();
 	host_reset();
+	busy_wait_ms(2000);
+	host_readdress();
+	driver_init();
+
+	led_machine(0, 64);
+	led_machine(2, 64);
 
 	while (1) tight_loop_contents();
 }

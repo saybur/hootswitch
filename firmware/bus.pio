@@ -80,9 +80,17 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 	*c = bus_tx_dev_program_get_default_config(offset);
 	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
 	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
 	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+}
+
+static inline void bus_tx_dev_put(PIO pio, uint8_t sm, uint8_t v)
+{
+	// left justify data (MSB first) via narrow bus writes
+	// a bit cryptic, but see datasheet 3.6.1 for details
+	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
+	*txf = v;
 }
 %}
 
@@ -149,9 +157,15 @@ static inline void bus_tx_host_pio_config(pio_sm_config *c,
 	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_in_pins(c, pin_read);
-	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
 	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
 	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+}
+
+static inline void bus_tx_host_put(PIO pio, uint8_t sm, uint8_t v)
+{
+	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
+	*txf = v;
 }
 %}
 
@@ -206,8 +220,8 @@ static inline void bus_rx_dev_pio_config(pio_sm_config *c,
 	*c = bus_rx_dev_program_get_default_config(offset);
 	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_sideset_pins(c, pin_write);
-	sm_config_set_in_shift(c, true, true, 8);
-	sm_config_set_out_shift(c, true, true, 8);
+	sm_config_set_in_shift(c, false, true, 8); // shift left
+	sm_config_set_out_shift(c, true, true, 8); // shift right
 	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
 }
 %}
@@ -241,7 +255,7 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 {
 	*c = bus_atn_dev_program_get_default_config(offset);
 	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_out_shift(c, true, true, 16);
+	sm_config_set_out_shift(c, true, true, 16); // shift right
 	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
 }
 %}
@@ -253,9 +267,10 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 ;
 ; The bus protocol for devices is loose, allowing a +/- 30% deviation from
 ; nominal timings. To accomodate oddball devices this routine counts the
-; duration of the low & high parts of a bit pulse and pushes the timing values
-; into the RX FIFO for later interpretation by the CPU as '0' and '1' based on
-; which was dominant. Outputs are 16-bit words, structured like this:
+; duration of the low & high parts of a bit pulse and pushes the residual
+; timeout countdown into the RX FIFO for later interpretation by the CPU as '0'
+; and '1' based on which part of the signal has a _lower_ value, indicating
+; that part took longer. Outputs are 16-bit words, structured like this:
 ;
 ; - If (v >> 8) < (v & 0xFF), '0' bit
 ; - If (v >> 8) > (v & 0xFF), '1' bit
@@ -266,8 +281,8 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 ;
 ; 1) A countdown value is used both to measure the length of the pulses and
 ;    establish a maximum after which a timeout is registered; submit a value of
-;    225 in almost all cases, which produces a line-idle timeout of 90us and a
-;    Tlt max of 270us, both quite generous to slow devices.
+;    110 in almost all cases, which produces a line-idle timeout of 88us and a
+;    Tlt max of ~264us, both quite generous to slow devices.
 ; 2) Outside the PIO, an alarm should be set up for the maximum possible xmit
 ;    time.
 ;
@@ -282,10 +297,7 @@ rxh_tlt:
 	jmp x-- rxh_tlt_nto         ; countdown to max Tlt
 	irq wait 0 rel              ; stop, inform CPU of timeout
 rxh_tlt_nto:
-	jmp pin rxh_tlt             ; if high, continue waiting for Tlt to end
-
-	wait 1 pin 0                ; wait for '1' bit low to end
-	wait 0 pin 0                ; wait for '1' bit high to end
+	jmp pin rxh_tlt         [4] ; if high, continue waiting for Tlt to end
 
 .wrap_target
 	mov x, y                    ; setup countdown
@@ -310,8 +322,8 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 {
 	*c = bus_rx_host_program_get_default_config(offset);
 	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_in_shift(c, true, true, 8);
-	sm_config_set_out_shift(c, true, true, 16);
+	sm_config_set_in_shift(c, false, true, 16); // shift left
+	sm_config_set_out_shift(c, true, true, 8); // shift right
 	sm_config_set_clkdiv_int_frac(c, 50, 0); // 0.4us/clk
 }
 %}

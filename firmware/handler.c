@@ -15,4 +15,55 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico/stdlib.h"
+
 #include "handler.h"
+
+// the full list of possible device handlers
+static ndev_handler handler_list[HANDLER_MAX];
+static uint8_t handler_list_count;
+
+uint8_t handler_count()
+{
+	return handler_list_count;
+}
+
+bool handler_register(ndev_handler *handler)
+{
+	if (handler == NULL) {
+		return false;
+	}
+	if (handler_list_count < HANDLER_MAX) {
+		handler_list[handler_list_count++] = *handler;
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool handler_get(uint8_t id, ndev_handler **handler)
+{
+	if (id < handler_list_count) {
+		*handler = &(handler_list[id]);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+void handler_init(void)
+{
+	/*
+	 * ------------------------------------------------------------------------
+	 * This space available for handlers to tie into the system. Call init code
+	 * from here to set up during boot.
+	 * ------------------------------------------------------------------------
+	 */
+}
+
+void handler_poll(void)
+{
+	for (uint8_t i = 0; i < handler_list_count; i++) {
+		handler_list[i].poll_func();
+	}
+}

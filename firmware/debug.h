@@ -19,5 +19,6 @@
 #define __DEBUG_H__
 
 void dbg(const char *s, ...);
+void dbg_err(const char *s, ...);
 
 #endif /* __DEBUG_H__ */

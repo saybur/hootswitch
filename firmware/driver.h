@@ -24,7 +24,7 @@
 /*
  * Defines a thin abstraction layer for device emulators ("drivers") mirroring
  * the ADB logical command set. This approach is designed to allow new
- * compilation units to tie into the firmware with minimal changes to the rest
+ * implementations to tie into the firmware with minimal changes to the rest
  * of the program code.
  *
  * This is conceptually similar but distinct from "handlers," which are used on
@@ -35,8 +35,10 @@
  * provides several functions which will be called back by the connected
  * computers to perform varous tasks. The functions are as follows:
  *
- * - void get_func(uint8_t dev, uint8_t mach, uint8_t reg, uint8_t *data, uint8_t *data_len)
- * - void set_func(uint8_t dev, uint8_t mach, uint8_t reg, uint8_t *data, uint8_t data_len)
+ * - void get_func(uint8_t dev, uint8_t mach, uint8_t reg,
+ *                 uint8_t *data, uint8_t *data_len)
+ * - void set_func(uint8_t dev, uint8_t mach, uint8_t reg,
+ *                 uint8_t *data, uint8_t data_len)
  * - void flush_func(uint8_t dev, uint8_t mach, uint8_t reg)
  * - void reset_func(uint8_t dev, uint8_t mach)
  * - bool srq_func(uint8_t mach)
@@ -98,7 +100,7 @@
  *   that can be instantly returned.
  *
  * The functions with (-) are invoked from the process context. You may still
- * (generally) receive the interrupt commands while these are executing.
+ * (generally) receive interrupt commands while these are executing.
  *
  * There is only one "active" machine at any time, the others are inactive. It
  * is up to the driver to decide how this should be handled. For example, a
@@ -114,6 +116,12 @@
  * called while that machine is active. Restarting the affected computer
  * will cause a new reset event, after which your calls will be invoked
  * normally. This isn't great, but hey, it's ADB, what can you do.
+ *
+ * Host initialization and native device assignment happens before this is
+ * used, feel free to register in response to an assignment call from there.
+ *
+ * Unless otherwise noted none of these calls are reentrant, are NOT safe for
+ * use from ISRs and/or the other CPU core.
  */
 
 typedef struct {
@@ -125,7 +133,7 @@ typedef struct {
 	uint8_t (*get_handle_func)(uint8_t, uint8_t);
 	void (*set_handle_func)(uint8_t, uint8_t, uint8_t);
 	void (*switch_func)(uint8_t);
-	bool (*poll)(void);
+	bool (*poll_func)(void);
 } dev_driver;
 
 /*
@@ -135,13 +143,20 @@ typedef struct {
  */
 #define DRIVER_MAXIMUM  8
 
-/*
+/**
+ * @return  the current number of registered drivers.
+ */
+uint8_t driver_count(void);
+
+/**
  * Register a new device. This will set a device identifier in the given
  * pointer, which will be used when calling back the functions given.
  *
- * This will return a nonzero result if the device canot be added.
+ * @param *dev_id  will be set to the identifier for later callbacks.
+ * @param *driver  the new driver to add.
+ * @return         true if it was added, false otherwise.
  */
-uint8_t driver_register(uint8_t *dev_id, dev_driver *driver);
+bool driver_register(uint8_t *dev_id, dev_driver *driver);
 
 /*
  * ----------------------------------------------------------------------------
@@ -150,7 +165,8 @@ uint8_t driver_register(uint8_t *dev_id, dev_driver *driver);
  * ----------------------------------------------------------------------------
  */
 
-void driver_get(uint8_t dev, dev_driver *driver);
+bool driver_get(uint8_t dev, dev_driver **driver);
+void driver_init(void); // see .c file for details
 void driver_poll(void);
 
 #endif /* __DRIVER_H__ */

@@ -72,8 +72,10 @@ _most definitely_ not an authority on `gdb`):
 * `continue` will proceed, stopping at breakpoints; Ctrl-C halts.
 * `finish` completes a function.
 * `bt` prints a backtrace, `bt f` prints a backtrace with symbols.
+* `up` and `down` moves around the frames of a call.
 * `i r` prints registers.
 * `p X` prints variable X.
+* `p/x *0x0` prints in hex from the address, useful for peripheral registers.
 
 Licenses
 --------

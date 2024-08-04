@@ -23,36 +23,52 @@
 #include "host.h"
 #include "hardware.h"
 
-static volatile dev_driver drivers[DRIVER_MAXIMUM];
-static volatile uint8_t driver_count;
+static dev_driver driver_list[DRIVER_MAXIMUM];
+static uint8_t driver_list_count;
 
-uint8_t driver_register(uint8_t *dev_id, dev_driver *driver)
+uint8_t driver_count(void)
+{
+	return driver_list_count;
+}
+
+bool driver_register(uint8_t *dev_id, dev_driver *driver)
 {
 	if (driver == NULL || dev_id == NULL) {
-		return 2;
+		return false;
 	}
 
-	if (driver_count < DRIVER_MAXIMUM) {
-		*dev_id = driver_count;
-		drivers[driver_count++] = *driver;
-		return 0;
+	if (driver_list_count < DRIVER_MAXIMUM) {
+		*dev_id = driver_list_count;
+		driver_list[driver_list_count++] = *driver;
+		return true;
 	} else {
-		return 1;
+		return false;
 	}
 }
 
-void driver_get(uint8_t dev, dev_driver *driver)
+bool driver_get(uint8_t dev, dev_driver **driver)
 {
-	if (dev < driver_count) {
-		*driver = drivers[dev];
+	if (dev < driver_list_count) {
+		*driver = &(driver_list[dev]);
+		return true;
 	} else {
-		driver = NULL;
+		return false;
 	}
+}
+
+void driver_init(void)
+{
+	/*
+	 * ------------------------------------------------------------------------
+	 * This space available for drivers to tie into the system. Call init code
+	 * from here to set up during boot.
+	 * ------------------------------------------------------------------------
+	 */
 }
 
 void driver_poll(void)
 {
-	for (uint8_t i = 0; i < driver_count; i++) {
-		drivers[i].poll();
+	for (uint8_t i = 0; i < driver_list_count; i++) {
+		driver_list[i].poll_func();
 	}
 }

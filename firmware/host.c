@@ -28,14 +28,18 @@
 #include "host.h"
 #include "led.h"
 
-#define HANDLER_MAX  8
-#define DEVICE_MAX   14
-#define TYP_CMD_GAP  6000
+#define DEVICE_MAX        14
+#define TYP_CMD_GAP       6000
+#define DMA_MAX_BITS      65
+
+#define TALK_REG3         0xF
+#define LISTEN_REG3       0xB
 
 // see the PIO host definitions for what these values mean
-#define PIO_CMD_OFFSET  2
-#define PIO_RESET_VAL   59
-#define PIO_CMD_VAL     15
+#define PIO_CMD_OFFSET    2
+#define PIO_RESET_VAL     59
+#define PIO_CMD_VAL       15
+#define PIO_TIMEOUT_VAL   110
 
 // trackers for the PIO state machine used
 static uint32_t pio_offset;
@@ -55,17 +59,14 @@ typedef enum {
 } host_phase;
 static volatile host_phase phase = HOST_IDLE;
 
-// the full list of possible device handlers
-static volatile ndev_handler handler_list[HANDLER_MAX];
-static volatile uint8_t handler_list_count;
-
-// device ID -> ADB address mapping
+// devID->address and devID->handler tables
 static volatile ndev_info devices[DEVICE_MAX];
-static volatile ndev_handler device_handlers[DEVICE_MAX];
+static volatile ndev_handler *device_handlers[DEVICE_MAX];
 static volatile uint8_t device_count;
 
 // queue for requested commands on devices
 typedef struct {
+	uint16_t id;
 	uint8_t device;
 	uint8_t command;
 	uint8_t length;
@@ -74,12 +75,13 @@ static volatile bool queue_enabled;
 static volatile host_command queue[COMMAND_QUEUE_SIZE];
 static volatile uint8_t queue_pos;
 static volatile uint8_t queue_count;
+static volatile uint16_t queue_id;
 
 // buffer for data talk/listen steps
 static volatile uint32_t time;
 static volatile uint8_t device;
 static volatile uint8_t command;
-static volatile uint16_t rxbuf[64];
+static volatile uint16_t rxbuf[DMA_MAX_BITS];
 static volatile uint8_t databuf[8];
 static volatile uint8_t databuflen;
 
@@ -102,20 +104,51 @@ static void host_pio_load_tx(bool tx)
 	}
 }
 
-// parses the device reception buffer and provides the results back
-static void host_parse_rxbuf(uint8_t *data, uint8_t bytes)
+/*
+ * Stall until the PIO IRQ sets or timeout occurs. Only used with sync calls.
+ * This will stop the state machine after timeout, clear the IRQ, and ensure
+ * the line driver has been released. Returns true if flag set, false
+ * otherwise.
+ */
+static bool host_busy_wait_pio_irq(uint16_t timeout)
 {
+	uint32_t elapsed = 0;
+	while (! (HOST_PIO->irq & (1U << pio_sm))
+			&& elapsed <= timeout) {
+		busy_wait_us_32(5);
+		elapsed += 5;
+	}
+
+	// stop state machine, get IRQ status, clear, and make sure output is idle
+	pio_sm_set_enabled(HOST_PIO, pio_sm, false);
+	bool res = HOST_PIO->irq & (1U << pio_sm);
+	pio_interrupt_clear(HOST_PIO, pio_sm);
+	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
+	return res;
+}
+
+// parses device reception buffer and writes result to supplied byte array
+// returns the number of recognized bytes
+static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
+{
+	if (bits > DMA_MAX_BITS) bits = DMA_MAX_BITS;
+	if (bits < 1) return 0;
+	bits -= 1; // first bit is start bit, ignore
+
+	uint8_t bytes = bits / 8;
+	volatile uint16_t *in = &(rxbuf[1]);
 	for (uint i = 0; i < bytes; i++) {
 		uint8_t b = 0;
 		for (uint j = 0; j < 8; j++) {
-			uint16_t v = rxbuf[i * 8 + j];
+			if (j != 0) b = b << 1;
+			uint16_t v = *in++;
 			if ((v >> 8) > (v & 0xFF)) {
 				b |= 1;
 			}
-			b = b << 1;
 		}
 		data[i] = b;
 	}
+	return bytes;
 }
 
 // ISR callback for the timer
@@ -167,23 +200,27 @@ host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len)
 	host_pio_load_tx(true);
 
 	// execute the requested command
+	uint16_t timeout_base;
 	pio_sm_config c;
 	bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
 	pio_sm_init(HOST_PIO, pio_sm, pio_offset + PIO_CMD_OFFSET, &c);
 	if (cmd == 0x00) {
 		// reset, including long pulse
-		pio_sm_put(HOST_PIO, pio_sm, PIO_RESET_VAL);
+		bus_tx_host_put(HOST_PIO, pio_sm, PIO_RESET_VAL);
+		timeout_base = 3000;
 	} else {
-		pio_sm_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
+		bus_tx_host_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
+		timeout_base = 800;
 	}
-	pio_sm_put(HOST_PIO, pio_sm, cmd);
+	bus_tx_host_put(HOST_PIO, pio_sm, cmd);
 	pio_sm_set_enabled(HOST_PIO, pio_sm, true);
 
 	// wait for the state machine to complete operation, then clear IRQs
-	// FIXME stall condition if line stays stuck low, needs clean abort
-	while (! (HOST_PIO->irq & (1U << pio_sm))) tight_loop_contents();
-	pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-	pio_interrupt_clear(HOST_PIO, pio_sm);
+	bool cmdres = host_busy_wait_pio_irq(timeout_base + 100 * 9 + 400);
+	if (! cmdres) {
+		// timed out, should only happen if line gets stuck low
+		return HOSTERR_LINE_STUCK;
+	}
 
 	// is there a data transfer step?
 	host_err cmd_status = HOSTERR_OK;
@@ -192,65 +229,66 @@ host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len)
 		// Talk, we'll be reading from device
 		host_pio_load_tx(false);
 		bus_rx_host_pio_config(&c, pio_offset, A_DI_PIN);
-		pio_sm_put(HOST_PIO, pio_sm, *len);
+		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
+		pio_sm_put(HOST_PIO, pio_sm, PIO_TIMEOUT_VAL);
 		dma_channel_configure(dma_chan, &dma_rx_cfg,
 				rxbuf,
 				&(HOST_PIO->rxf[pio_sm]),
-				*len * 8,
+				DMA_MAX_BITS, // 8 bytes plus start/stop bits
 				true);
 
 		// start immediately, the PIO will stall until data comes in
-		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
 		pio_sm_set_enabled(HOST_PIO, pio_sm, true);
 
-		// wait for about 300us plus 130us per bit, unless ended sooner
-		uint32_t elapsed = 0;
-		uint32_t target = 300 + (*len + 2) * 8 * 130;
-		while (! (HOST_PIO->irq & (1U << pio_sm))
-				|| elapsed < target) {
-			// sketchy simple wait
-			busy_wait_us_32(20);
-			elapsed += 20;
+		// wait for maximum possible legal data length, just in case something
+		// gets really stuck
+		bool ok = host_busy_wait_pio_irq(300 + 66 * 130);
+		uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
+		dma_channel_abort(dma_chan);
+		if (! ok) {
+			// generally should only happen if the remote keeps toggling the
+			// line for longer than it is allowed, treat as stuck
+			*len = 0;
+			return HOSTERR_LINE_STUCK;
 		}
 
-		// stop machine and check status
-		pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-		if (! (HOST_PIO->irq & (1U << pio_sm))) {
-			// stalled out, consider transfer to have failed
-			dma_channel_abort(dma_chan);
-			cmd_status = HOSTERR_TIMEOUT;
+		// if we got anything consider it not to be a timeout, just report
+		if (dma_remain == DMA_MAX_BITS) {
+			*len = 0;
+			return HOSTERR_TIMEOUT;
 		} else {
-			pio_interrupt_clear(HOST_PIO, pio_sm);
-			host_parse_rxbuf(data, *len);
+			*len = host_parse_rxbuf(data, DMA_MAX_BITS - dma_remain);
 		}
 
 	} else if (xfer == 0x2) {
 		// Listen, send data; TX FIFO joined so it can fit all 8 if needed
 		bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
+		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
 		for (uint8_t i = 0; i < *len; i++) {
-			pio_sm_put(HOST_PIO, pio_sm, data[i]);
+			bus_tx_host_put(HOST_PIO, pio_sm, data[i]);
 		}
 
-		// wait for Tlt to expire, then send
-		busy_wait_us_32(180);
-		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
+		// wait for min Tlt to expire (likely more due to above work)
+		busy_wait_us_32(140);
+		// then proceed to send
 		pio_sm_set_enabled(HOST_PIO, pio_sm, true);
 
-		// wait for the state machine to become done
-		// FIXME stall condition if line stays stuck low, needs clean abort
-		while (! (HOST_PIO->irq & (1U << pio_sm))) tight_loop_contents();
-		pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-		pio_interrupt_clear(HOST_PIO, pio_sm);
+		// wait for the state machine to finish sending
+		bool ok = host_busy_wait_pio_irq(100 + *len * 8 * 100 + 150);
+		if (! ok) {
+			// as before, only occurs if line gets stuck low
+			cmd_status = HOSTERR_LINE_STUCK;
+		}
 
 	} else {
 		// no data transfer, just wait for Tlt to expire
-		busy_wait_us_32(180);
+		busy_wait_us_32(140);
 	}
 
 	return cmd_status;
 }
 
-host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len)
+host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len, uint16_t *id)
 {
 	if (! queue_enabled) {
 		return HOSTERR_ASYNC_DISABLED;
@@ -269,6 +307,8 @@ host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len)
 	host_err result = HOSTERR_OK;
 	uint32_t isr = save_and_disable_interrupts();
 	if (queue_count < COMMAND_QUEUE_SIZE) {
+		*id = queue_id;
+		queue[queue_pos].id = queue_id++;
 		queue[queue_pos].device = device;
 		queue[queue_pos].command = ((devices[device].address_cur) << 4)
 				| command;
@@ -283,19 +323,6 @@ host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len)
 	}
 	restore_interrupts(isr);
 	return result;
-}
-
-host_err host_register(ndev_handler *handler)
-{
-	if (handler == NULL) {
-		return HOSTERR_INVALID_PARAM;
-	}
-	if (handler_list_count < HANDLER_MAX) {
-		handler_list[handler_list_count++] = *handler;
-		return HOSTERR_OK;
-	} else {
-		return HOSTERR_FULL;
-	}
 }
 
 host_err host_reset(void)
@@ -314,39 +341,96 @@ host_err host_reset(void)
 	}
 
 	// send reset command
+	dbg("host reset");
 	host_cmd_sync(0xFF, 0x00, NULL, NULL);
+}
 
-	// wait for 1 seconds for devices to reset
-	// FIXME should be split up somehow
-	busy_wait_ms(2000);
-/*
-	// lets do the address warp again
-	uint8_t top = 0xE;
-	uint8_t bottom = 0xE;
-	uint8_t data[2];
-	uint8_t len = 2;
-	for (uint8_t i = 0x10; i <= 0x70; i += 0x10) {
-		// Talk Register 3 at the address
-		while (host_cmd_sync(0xFF, i | 0xF, data, &len)) {
-			// Listen Register 3, move device to new address
-			
-			
-			
-			
-			host_cmd_sync(0xFF, 0x00, NULL, NULL);
-		}
+host_err host_readdress(void)
+{
+	if (queue_enabled) {
+		return HOSTERR_SYNC_DISABLED;
 	}
-*/
 
-	led_machine(0, 64);
-	led_machine(2, 64);
+	dbg("host re-addr");
 
-	// switch to async and set up periodic update pulse
-// TODO implement
-//	pio_set_irq0_source_enabled(HOST_PIO, PIO_INTR_SM0_LSB << pio_sm, true);
-//	queue_count = 0;
-//	queue_enabled = true;
-//	HOST_TIMER_ALRM = time_us_32() + TYP_CMD_GAP;
+	// readdress the devices
+	device_count = 0;
+	host_err err = HOSTERR_OK;
+	uint8_t addr_free = 0xE;
+	uint8_t data[2] = { 0 };
+	uint8_t datalen;
+
+	for(uint8_t i = 1; i <= 7; i++) {
+		dbg("  addr $%X {", i);
+		uint8_t dev_at_addr = 0;
+
+		// move all devices at address to free slots
+		datalen = 2;
+		while (! (err = host_cmd_sync(0xFF, (i << 4) | TALK_REG3, data, &datalen))) {
+			// did device return the right amount of data?
+			if (datalen != 2) {
+				dbg_err("    dev reg3 != 2b, %d", datalen);
+				return HOSTERR_BAD_DEVICE;
+			}
+
+			__breakpoint();
+
+			// found a device, report the default handler
+			dbg("    fnd $%X", data[1]);
+			// and move it to a free address
+			dev_at_addr++;
+			uint8_t hndl = data[1];
+			dbg("    mov $%X", addr_free);
+			data[0] = addr_free;
+			data[1] = 0xFE;
+			datalen = 2;
+			if (err = host_cmd_sync(0xFF, (i << 4) | LISTEN_REG3, data, &datalen)) {
+				dbg_err("    (!) %d", err);
+				return err;
+			}
+
+			// store data on device
+			devices[device_count].address_def = i;
+			devices[device_count].address_cur = addr_free;
+			devices[device_count].handle_def = hndl;
+			devices[device_count].handle_cur = hndl;
+			device_count++;
+
+			// advance for next
+			addr_free--;
+			if (addr_free < 0x7) {
+				dbg_err("    (!) %d", HOSTERR_TOO_MANY_DEVICES);
+				return HOSTERR_TOO_MANY_DEVICES;
+			}
+		}
+		if (err != HOSTERR_TIMEOUT) {
+			// bail out, all non-timeout conditions are fatal
+			dbg_err("  } (!) %d", err);
+			return err;
+		}
+
+		// move last-moved device back to original address
+		// different from the ADB Manager's first-moved procedure, but this
+		// seems simpler and should (in theory) be OK with all devices
+		if (dev_at_addr > 0) {
+			addr_free++;
+			dbg("    mov $%X, $%X", i, addr_free);
+			data[0] = addr_free;
+			data[1] = 0x00;
+			datalen = 2;
+			if (err = host_cmd_sync(0xFF, (addr_free << 4) | LISTEN_REG3, data, &datalen)) {
+				dbg_err("    (!) %d", err);
+				return err;
+			}
+			devices[(device_count - 1)].address_cur = i;
+		}
+		dbg("  } got %d", dev_at_addr);
+	}
+	dbg("re-addr ok!");
+
+	// readdress the devices
+
+	return HOSTERR_OK;
 }
 
 void host_init(void)
@@ -360,11 +444,11 @@ void host_init(void)
 
 	// leave the largest of the two programs in PIO instruction memory,
 	// this will be swapped in and out as needed.
-	assert(sizeof(bus_rx_host_program_instructions)
-			>= sizeof(bus_tx_host_program_instructions));
-	pio_offset = pio_add_program(HOST_PIO, &bus_rx_host_program);
-	// change the following default if TX ever becomes > RX
-	pio_tx_prog = false;
+	assert(sizeof(bus_tx_host_program_instructions)
+			>= sizeof(bus_rx_host_program_instructions));
+	pio_offset = pio_add_program(HOST_PIO, &bus_tx_host_program);
+	// change the following default if RX ever becomes > TX
+	pio_tx_prog = true;
 
 	// issue claims for peripherals to avoid accidental conflicts
 	pio_sm = pio_claim_unused_sm(HOST_PIO, true);
