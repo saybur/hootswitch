@@ -62,8 +62,6 @@ int main(void)
 
 	handler_init();
 	host_reset();
-	busy_wait_ms(2000);
-	host_readdress();
 	driver_init();
 
 	led_machine(0, 64);

@@ -19,6 +19,8 @@
 
 #include "handler.h"
 
+#include "drivers/keyboard.h"
+
 // the full list of possible device handlers
 static ndev_handler handler_list[HANDLER_MAX];
 static uint8_t handler_list_count;
@@ -59,6 +61,8 @@ void handler_init(void)
 	 * from here to set up during boot.
 	 * ------------------------------------------------------------------------
 	 */
+
+	keyboard_init();
 }
 
 void handler_poll(void)

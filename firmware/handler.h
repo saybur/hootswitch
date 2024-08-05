@@ -32,20 +32,18 @@
  * 1) The host resets all native devices and readdresses them, storing the
  *    information in `ndev_info` structs. The `reset_func` of all handlers is
  *    called.
- * 2) The host goes through the handlers in reverse insertion order. For each
- *    native device with a default handler matching a handler 'seek' value, the
- *    host will attempt to assign the 'set' handler to the device. If the
+ * 2) The host goes through the handlers in reverse insertion order. The
+ *    handlers will be interviewed to see if they want the device. If the
  *    device accepts it, that handler will be called with device information
- *    via `assign_func`. If the set handler is the same as the seek handler,
- *    this step will be skipped and the device assignment will occur
- *    unconditionally.
+ *    via `assign_func`.
  * 3) From this point, any time a command is completed on an assigned device
  *    the matching handler will be called back by the host implementation. See
  *    the list of calls for more details.
  *
  * The functions to implement are as follows.
  *
- * - void assign_func(uint8_t dev, ndev_info info)
+ * - bool interview_func(ndev_info *info, uint8_t *err)
+ * - void assign_func(uint8_t dev, ndev_info *info)
  * - void talk_func(uint8_t dev, uint16_t cid, uint8_t reg,
  *                  uint8_t *data, uint8_t data_len)
  * - void listen_func(uint8_t dev, uint16_t cid, uint8_t reg)
@@ -62,8 +60,9 @@
  *   the async command queue system, to help you keep track of which command
  *   the response is in relation to. This will be 0 if there is no associated
  *   async command.
- * - `reg` is the ADB register, from 0 - 2. [TODO determine if reg3 will be
- *   supported in the future].
+ * - `reg` is the ADB register, from 0 - 3. Do not mess with the device address
+ *   or you will confuse the host implementation (changing the handler of a
+ *   device you own is fine as long as you update the appropriate struct).
  *
  * Notes for each:
  *
@@ -71,6 +70,15 @@
  *   always happen once at the beginning of the program. It may happen again
  *   if someone resets the host later. When received, drop all devices you
  *   own.
+ * - (-) interview_func is called with information about a device, asking the
+ *   handler to give a yes/no answer to whether it should be assigned this
+ *   device. Simpler handlers can just check the ADB "device handler ID" (DHID)
+ *   to answer the question. More compliated handlers may want to query the
+ *   device and see if it accepts a different DHID; if that is done, be sure to
+ *   update the struct members appropriately. Return true to take control of
+ *   the device, false otherwise. Return a nonzero value in the int pointer if
+ *   a malfunction occurs that should block further use of the device by other
+ *   handlers.
  * - (-) assign_func is called to grant control of a particular device to a
  *   handler. The handler will be called back with any information from this
  *   device.
@@ -104,18 +112,18 @@
 typedef struct {
 	uint8_t address_def;  // default address at reset time
 	uint8_t address_cur;  // current address, don't change this!
-	uint8_t handle_def;   // default device handler at reset time
-	uint8_t handle_cur;   // current device handler
+	uint8_t dhid_def;     // default device handler ID at reset time
+	uint8_t dhid_cur;     // current device handler ID
+	bool fault;           // true if the device is skipped due to HW issues
 } ndev_info;
 
 // struct to submit for registration, see (long) description above.
 typedef struct {
-	char *name;
-	uint8_t handle_seek;
-	uint8_t handle_set;
+	const char *name;
 	bool accept_noop_talks;
 	void (*reset_func)(void);
-	void (*assign_func)(uint8_t, ndev_info *info);
+	bool (*interview_func)(volatile ndev_info*, uint8_t*);
+	void (*assign_func)(uint8_t, volatile ndev_info*);
 	void (*talk_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t*);
 	void (*listen_func)(uint8_t, uint16_t, uint8_t);
 	void (*flush_func)(uint8_t, uint16_t, uint8_t);

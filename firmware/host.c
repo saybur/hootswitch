@@ -85,6 +85,12 @@ static volatile uint16_t rxbuf[DMA_MAX_BITS];
 static volatile uint8_t databuf[8];
 static volatile uint8_t databuflen;
 
+/*
+ * ----------------------------------------------------------------------------
+ *   PIO Support Functions
+ * ----------------------------------------------------------------------------
+ */
+
 // swaps the PIO program out (if needed)
 static void host_pio_load_tx(bool tx)
 {
@@ -151,6 +157,12 @@ static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
 	return bytes;
 }
 
+/*
+ * ----------------------------------------------------------------------------
+ *   Interrupt Routines
+ * ----------------------------------------------------------------------------
+ */
+
 // ISR callback for the timer
 static void host_timer(void)
 {
@@ -177,6 +189,228 @@ static void host_pio_isr(void)
 {
 	// TODO implement
 }
+
+/*
+ * ----------------------------------------------------------------------------
+ *   Reset & Init Logic
+ * ----------------------------------------------------------------------------
+ */
+
+// moves from async->sync (if needed) and sends the actual reset command
+static host_err host_reset_bus(void)
+{
+	if (queue_enabled) {
+		// abort any existing tasks and go async->sync
+		irq_set_enabled(HOST_TIMER_IRQ, false);
+		irq_set_enabled(HOST_PIO_IRQ0, false);
+		pio_sm_set_enabled(HOST_PIO, pio_sm, false);
+		// clear local interrupt sources
+		pio_interrupt_clear(HOST_PIO, pio_sm);
+		timer_hw->armed = 1U << HOST_TIMER;
+		// dwell for a bit to time out anything stopped above
+		queue_enabled = false;
+		busy_wait_us(150);
+	}
+
+	// send reset command
+	return host_cmd_sync(0xFF, 0x00, NULL, NULL);
+}
+
+// performs ADB address shuffling
+static host_err host_reset_addresses(void)
+{
+	if (queue_enabled) {
+		return HOSTERR_SYNC_DISABLED;
+	}
+
+	// wipe existing device/handler assignments
+	for (uint8_t i = 0; i < DEVICE_MAX; i++) {
+		device_handlers[i] = NULL;
+	}
+
+	// readdress the devices
+	device_count = 0;
+	host_err err = HOSTERR_OK;
+	uint8_t addr_free = 0xE;
+	uint8_t data[2] = { 0 };
+	uint8_t datalen;
+
+	for(uint8_t i = 1; i <= 7; i++) {
+		dbg("  addr $%X {", i);
+		uint8_t dev_at_addr = 0;
+
+		// move all devices at address to free slots
+		datalen = 2;
+		while (! (err = host_cmd_sync(0xFF, (i << 4) | TALK_REG3, data, &datalen))) {
+			// did device return the right amount of data?
+			if (datalen != 2) {
+				dbg_err("    dev reg3 != 2b, %d", datalen);
+				return HOSTERR_BAD_DEVICE;
+			}
+
+			// found a device, report the default handler
+			dbg("    fnd $%X (id %d)", data[1], device_count);
+			// and move it to a free address
+			dev_at_addr++;
+			uint8_t dhid = data[1];
+			dbg("    mov $%X", addr_free);
+			data[0] = addr_free;
+			data[1] = 0xFE;
+			datalen = 2;
+			if (err = host_cmd_sync(0xFF, (i << 4) | LISTEN_REG3, data, &datalen)) {
+				dbg_err("    (!) %d", err);
+				return err;
+			}
+
+			// store data on device
+			devices[device_count].address_def = i;
+			devices[device_count].address_cur = addr_free;
+			devices[device_count].dhid_def = dhid;
+			devices[device_count].dhid_cur = dhid;
+			devices[device_count].fault = false;
+			device_count++;
+
+			// advance for next
+			addr_free--;
+			if (addr_free < 0x7) {
+				dbg_err("    (!) %d", HOSTERR_TOO_MANY_DEVICES);
+				return HOSTERR_TOO_MANY_DEVICES;
+			}
+		}
+		if (err != HOSTERR_TIMEOUT) {
+			// bail out, all non-timeout conditions are fatal
+			dbg_err("  } (!) %d", err);
+			return err;
+		}
+
+		// move last-moved device back to original address
+		// different from the ADB Manager's first-moved procedure, but this
+		// seems simpler and should (in theory) be OK with all devices
+		if (dev_at_addr > 0) {
+			addr_free++;
+			dbg("    mov $%X, $%X", i, addr_free);
+			data[0] = addr_free;
+			data[1] = 0x00;
+			datalen = 2;
+			if (err = host_cmd_sync(0xFF, (addr_free << 4) | LISTEN_REG3, data, &datalen)) {
+				dbg_err("    (!) %d", err);
+				return err;
+			}
+			devices[(device_count - 1)].address_cur = i;
+		}
+		dbg("  } got %d", dev_at_addr);
+	}
+
+	dbg("re-addr ok!");
+	return HOSTERR_OK;
+}
+
+// resets handlers and assigns devices to them
+static host_err host_handle_assign(void)
+{
+	// perform a reset on all handlers
+	for (uint8_t i = 0; i < handler_count(); i++) {
+		ndev_handler *handler;
+		handler_get(i, &handler);
+		if (handler != NULL) {
+			handler->reset_func();
+		}
+	}
+
+	// scan the devices and assign handlers
+	for (uint8_t hid = handler_count(); hid > 0; hid--) {
+		ndev_handler *handler;
+		handler_get(hid - 1, &handler);
+		if (handler == NULL) continue;
+
+		dbg("  handler '%s':", handler->name);
+		for (uint8_t did = 0; did < device_count; did++) {
+			volatile ndev_info *device = &(devices[did]);
+
+			// disallow if a device is already owned
+			if (device_handlers[did] != NULL) continue;
+			// disallow if device faulted
+			if (device->fault) continue;
+
+			// might be OK, check with the handler and see if they want it
+			uint8_t herr = 0;
+			bool res = handler->interview_func(device, &herr);
+			if (herr) {
+				dbg_err("    id %d bad interview (%d), skip", did, herr);
+				device->fault = true;
+			} else if (res) {
+				dbg("    id %d accepted", did);
+				device_handlers[did] = handler;
+			}
+		}
+	}
+}
+
+host_err host_reset(void)
+{
+	host_err err;
+
+	dbg("host reset");
+	if (err = host_reset_bus()) {
+		return err;
+	}
+
+	dbg("wait for device reset...");
+	busy_wait_ms(2000);
+
+	dbg("host re-addr");
+	if (err = host_reset_addresses()) {
+		return err;
+	}
+
+	dbg("assign handlers");
+	if (err = host_handle_assign()) {
+		return err;
+	}
+}
+
+void host_init(void)
+{
+	// perform setup of the host pins
+	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
+	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
+	pio_sm_set_pindirs_with_mask(HOST_PIO, 0, A_DO_PIN_bm, A_DO_PIN_bm);
+	pio_gpio_init(HOST_PIO, A_DO_PIN);
+	gpio_init(A_DI_PIN);
+
+	// leave the largest of the two programs in PIO instruction memory,
+	// this will be swapped in and out as needed.
+	assert(sizeof(bus_tx_host_program_instructions)
+			>= sizeof(bus_rx_host_program_instructions));
+	pio_offset = pio_add_program(HOST_PIO, &bus_tx_host_program);
+	// change the following default if RX ever becomes > TX
+	pio_tx_prog = true;
+
+	// issue claims for peripherals to avoid accidental conflicts
+	pio_sm = pio_claim_unused_sm(HOST_PIO, true);
+	dma_chan = dma_claim_unused_channel(true);
+	hardware_alarm_claim(HOST_TIMER);
+
+	// create base DMA configuration
+	dma_rx_cfg = dma_channel_get_default_config(dma_chan);
+	channel_config_set_transfer_data_size(&dma_rx_cfg, DMA_SIZE_16);
+	channel_config_set_dreq(&dma_rx_cfg, pio_get_dreq(HOST_PIO, pio_sm, false));
+	channel_config_set_read_increment(&dma_rx_cfg, false);
+	channel_config_set_write_increment(&dma_rx_cfg, true);
+
+	// install the interrupt handlers
+	irq_set_exclusive_handler(HOST_PIO_IRQ0, host_pio_isr);
+	irq_set_exclusive_handler(HOST_TIMER_IRQ, host_timer);
+
+	// setup PIO IRQ, don't enable in NVIC yet
+	pio_set_irq0_source_enabled(HOST_PIO, PIO_INTR_SM0_LSB << pio_sm, true);
+}
+
+/*
+ * ----------------------------------------------------------------------------
+ *   Command Processing
+ * ----------------------------------------------------------------------------
+ */
 
 host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len)
 {
@@ -325,147 +559,4 @@ host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len, uint16_t *id)
 	return result;
 }
 
-host_err host_reset(void)
-{
-	if (queue_enabled) {
-		// abort any existing tasks and go async->sync
-		irq_set_enabled(HOST_TIMER_IRQ, false);
-		irq_set_enabled(HOST_PIO_IRQ0, false);
-		pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-		// clear local interrupt sources
-		pio_interrupt_clear(HOST_PIO, pio_sm);
-		timer_hw->armed = 1U << HOST_TIMER;
-		// dwell for a bit to time out anything stopped above
-		queue_enabled = false;
-		busy_wait_us(150);
-	}
 
-	// send reset command
-	dbg("host reset");
-	host_cmd_sync(0xFF, 0x00, NULL, NULL);
-}
-
-host_err host_readdress(void)
-{
-	if (queue_enabled) {
-		return HOSTERR_SYNC_DISABLED;
-	}
-
-	dbg("host re-addr");
-
-	// readdress the devices
-	device_count = 0;
-	host_err err = HOSTERR_OK;
-	uint8_t addr_free = 0xE;
-	uint8_t data[2] = { 0 };
-	uint8_t datalen;
-
-	for(uint8_t i = 1; i <= 7; i++) {
-		dbg("  addr $%X {", i);
-		uint8_t dev_at_addr = 0;
-
-		// move all devices at address to free slots
-		datalen = 2;
-		while (! (err = host_cmd_sync(0xFF, (i << 4) | TALK_REG3, data, &datalen))) {
-			// did device return the right amount of data?
-			if (datalen != 2) {
-				dbg_err("    dev reg3 != 2b, %d", datalen);
-				return HOSTERR_BAD_DEVICE;
-			}
-
-			__breakpoint();
-
-			// found a device, report the default handler
-			dbg("    fnd $%X", data[1]);
-			// and move it to a free address
-			dev_at_addr++;
-			uint8_t hndl = data[1];
-			dbg("    mov $%X", addr_free);
-			data[0] = addr_free;
-			data[1] = 0xFE;
-			datalen = 2;
-			if (err = host_cmd_sync(0xFF, (i << 4) | LISTEN_REG3, data, &datalen)) {
-				dbg_err("    (!) %d", err);
-				return err;
-			}
-
-			// store data on device
-			devices[device_count].address_def = i;
-			devices[device_count].address_cur = addr_free;
-			devices[device_count].handle_def = hndl;
-			devices[device_count].handle_cur = hndl;
-			device_count++;
-
-			// advance for next
-			addr_free--;
-			if (addr_free < 0x7) {
-				dbg_err("    (!) %d", HOSTERR_TOO_MANY_DEVICES);
-				return HOSTERR_TOO_MANY_DEVICES;
-			}
-		}
-		if (err != HOSTERR_TIMEOUT) {
-			// bail out, all non-timeout conditions are fatal
-			dbg_err("  } (!) %d", err);
-			return err;
-		}
-
-		// move last-moved device back to original address
-		// different from the ADB Manager's first-moved procedure, but this
-		// seems simpler and should (in theory) be OK with all devices
-		if (dev_at_addr > 0) {
-			addr_free++;
-			dbg("    mov $%X, $%X", i, addr_free);
-			data[0] = addr_free;
-			data[1] = 0x00;
-			datalen = 2;
-			if (err = host_cmd_sync(0xFF, (addr_free << 4) | LISTEN_REG3, data, &datalen)) {
-				dbg_err("    (!) %d", err);
-				return err;
-			}
-			devices[(device_count - 1)].address_cur = i;
-		}
-		dbg("  } got %d", dev_at_addr);
-	}
-	dbg("re-addr ok!");
-
-	// readdress the devices
-
-	return HOSTERR_OK;
-}
-
-void host_init(void)
-{
-	// perform setup of the host pins
-	gpio_set_slew_rate(A_DO_PIN, GPIO_SLEW_RATE_SLOW);
-	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
-	pio_sm_set_pindirs_with_mask(HOST_PIO, 0, A_DO_PIN_bm, A_DO_PIN_bm);
-	pio_gpio_init(HOST_PIO, A_DO_PIN);
-	gpio_init(A_DI_PIN);
-
-	// leave the largest of the two programs in PIO instruction memory,
-	// this will be swapped in and out as needed.
-	assert(sizeof(bus_tx_host_program_instructions)
-			>= sizeof(bus_rx_host_program_instructions));
-	pio_offset = pio_add_program(HOST_PIO, &bus_tx_host_program);
-	// change the following default if RX ever becomes > TX
-	pio_tx_prog = true;
-
-	// issue claims for peripherals to avoid accidental conflicts
-	pio_sm = pio_claim_unused_sm(HOST_PIO, true);
-	dma_chan = dma_claim_unused_channel(true);
-	hardware_alarm_claim(HOST_TIMER);
-
-	// create base DMA configuration
-	dma_rx_cfg = dma_channel_get_default_config(dma_chan);
-	channel_config_set_transfer_data_size(&dma_rx_cfg, DMA_SIZE_16);
-	channel_config_set_dreq(&dma_rx_cfg, pio_get_dreq(HOST_PIO, pio_sm, false));
-	channel_config_set_read_increment(&dma_rx_cfg, false);
-	channel_config_set_write_increment(&dma_rx_cfg, true);
-
-	// install the interrupt handlers
-	irq_set_exclusive_handler(HOST_PIO_IRQ0, host_pio_isr);
-	irq_set_exclusive_handler(HOST_TIMER_IRQ, host_timer);
-
-	// setup PIO IRQ, don't enable in NVIC yet
-	pio_set_irq0_source_enabled(HOST_PIO, PIO_INTR_SM0_LSB << pio_sm, true);
-}
