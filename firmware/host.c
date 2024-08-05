@@ -29,9 +29,9 @@
 #include "led.h"
 
 #define DEVICE_MAX        14
-#define TYP_CMD_GAP       6000
 #define DMA_MAX_BITS      65
 
+// aliases for header versions for use in sync call
 #define TALK_REG3         0xF
 #define LISTEN_REG3       0xB
 
@@ -40,6 +40,12 @@
 #define PIO_RESET_VAL     59
 #define PIO_CMD_VAL       15
 #define PIO_TIMEOUT_VAL   110
+
+// a few more common timer-based timeouts
+#define MIN_TLT           140
+#define COMMAND_TIMEOUT   1500
+#define RX_MAX_TIMEOUT    (300 + 66 * 130)
+#define TYP_CMD_GAP       1000
 
 // trackers for the PIO state machine used
 static uint32_t pio_offset;
@@ -54,36 +60,28 @@ typedef enum {
 	HOST_IDLE,
 	HOST_COMMAND,
 	HOST_RX,
-	HOST_TX,
-	HOST_RESET
+	HOST_TX_START,
+	HOST_TX_END
 } host_phase;
-static volatile host_phase phase = HOST_IDLE;
 
 // devID->address and devID->handler tables
 static volatile ndev_info devices[DEVICE_MAX];
 static volatile ndev_handler *device_handlers[DEVICE_MAX];
 static volatile uint8_t device_count;
 
-// queue for requested commands on devices
+// queue for requested commands on devices, implemented as a ring buffer
+#define CMD_QUEUE_SIZE 16
+#define CMD_QUEUE_MASK 15
 typedef struct {
 	uint16_t id;
 	uint8_t device;
 	uint8_t command;
-	uint8_t length;
 } host_command;
 static volatile bool queue_enabled;
-static volatile host_command queue[COMMAND_QUEUE_SIZE];
-static volatile uint8_t queue_pos;
+static volatile host_command queue[CMD_QUEUE_SIZE];
+static volatile uint8_t queue_tail;
 static volatile uint8_t queue_count;
-static volatile uint16_t queue_id;
-
-// buffer for data talk/listen steps
-static volatile uint32_t time;
-static volatile uint8_t device;
-static volatile uint8_t command;
-static volatile uint16_t rxbuf[DMA_MAX_BITS];
-static volatile uint8_t databuf[8];
-static volatile uint8_t databuflen;
+static volatile uint16_t queue_id = 1;
 
 /*
  * ----------------------------------------------------------------------------
@@ -133,6 +131,8 @@ static bool host_busy_wait_pio_irq(uint16_t timeout)
 	return res;
 }
 
+static volatile uint16_t rxbuf[DMA_MAX_BITS];
+
 // parses device reception buffer and writes result to supplied byte array
 // returns the number of recognized bytes
 static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
@@ -159,35 +159,199 @@ static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
 
 /*
  * ----------------------------------------------------------------------------
- *   Interrupt Routines
+ *   Interrupt Routines / Async Command Execution
  * ----------------------------------------------------------------------------
  */
 
-// ISR callback for the timer
+static volatile host_phase phase = HOST_IDLE;
+static volatile host_command active_command;
+static volatile uint8_t data_buf[8];
+static volatile uint16_t timeout;
+static volatile bool srq;
+
+// generic PIO stop routine for the timer
+static inline void host_stop_pio(void)
+{
+	pio_sm_set_enabled(HOST_PIO, pio_sm, false);
+	pio_interrupt_clear(HOST_PIO, pio_sm);
+	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
+}
+
+// generic setup for calling back into the timer when a command completes
+static inline void host_sync_complete(void)
+{
+	host_stop_pio();
+	phase = HOST_IDLE;
+	timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
+}
+
+/*
+ * ISR callback for the timer. Used to implement periodic polling, as well as
+ * handle timeouts that the PIO unit can't resolve (usually because it has
+ * stalled somewhere).
+ *
+ * This assumes it has the same interrupt priority as the PIO ISR (as in, they
+ * can't interrupt each other).
+ */
 static void host_timer(void)
 {
 	switch (phase)
 	{
 		case HOST_IDLE:
+			/*
+			 * Three options, in descending order:
+			 *
+			 * 1) queued command,
+			 * 2) SRQ,
+			 * 3) poll Talk0 at current device.
+			 */
+			if (queue_count) {
+				active_command = queue[queue_tail];
+				queue_tail++;
+				queue_count--;
+			} else {
+				uint8_t dev = active_command.device;
+				if (srq) dev++;
+				active_command.id = 0;
+				active_command.device = dev;
+				active_command.command = ((devices[dev].address_cur) << 4)
+						| (uint8_t) COMMAND_TALK_0;
+			}
+
+			// start command
+			host_pio_load_tx(true);
+			pio_sm_config c;
+			bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
+			pio_sm_init(HOST_PIO, pio_sm, pio_offset + PIO_CMD_OFFSET, &c);
+			bus_tx_host_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
+			bus_tx_host_put(HOST_PIO, pio_sm, active_command.command);
+			pio_sm_set_enabled(HOST_PIO, pio_sm, true);
+
+			// advance and setup fallback timer
+			phase = HOST_COMMAND;
+			timer_hw->alarm[HOST_TIMER] = time_us_32() + COMMAND_TIMEOUT;
 			break;
+
 		case HOST_COMMAND:
+		case HOST_RX: // this one should be very rare
+			// if invoked, command step timed out
+			host_sync_complete();
 			break;
-		case HOST_RX:
+
+		case HOST_TX_START:
+			// at end of Tlt, start transmission
+			pio_sm_set_enabled(HOST_PIO, pio_sm, true);
+			// and add a timeout safety
+			timer_hw->alarm[HOST_TIMER] = time_us_32() + timeout;
+			phase = HOST_TX_END;
+
 			break;
-		case HOST_TX:
+		case HOST_TX_END:
+			// send failed
+			host_sync_complete();
+
 			break;
 	}
 
-	// TODO implement
-
 	// clear before returning
-	irq_clear(HOST_TIMER_IRQ);
+	timer_hw->intr = 1U << HOST_TIMER;
 }
 
 // ISR callback for the PIO state machine
 static void host_pio_isr(void)
 {
-	// TODO implement
+	// unconditionally stop PIO
+	host_stop_pio();
+
+	switch (phase)
+	{
+		case HOST_COMMAND:
+			// triggered by successful end of command
+
+			// check SRQ flag and clear it
+			srq = HOST_PIO->irq & (1U << (pio_sm + 4));
+			pio_interrupt_clear(HOST_PIO, pio_sm + 4);
+
+			uint8_t cmd_type = active_command.command & 0xC;
+			if (cmd_type == 0xC) {
+				// Talk, prepare for reception
+				host_pio_load_tx(false);
+				pio_sm_config c;
+				bus_rx_host_pio_config(&c, pio_offset, A_DI_PIN);
+				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
+				pio_sm_put(HOST_PIO, pio_sm, PIO_TIMEOUT_VAL);
+				dma_channel_configure(dma_chan, &dma_rx_cfg,
+						rxbuf,
+						&(HOST_PIO->rxf[pio_sm]),
+						DMA_MAX_BITS, // 8 bytes plus start/stop bits
+						true); // start
+
+				// start immediately, the PIO will stall until data comes in
+				pio_sm_set_enabled(HOST_PIO, pio_sm, true);
+
+				// move to next phase, include safety valve
+				phase = HOST_RX;
+				timer_hw->alarm[HOST_TIMER] = time_us_32() + RX_MAX_TIMEOUT;
+
+			} else if (cmd_type == 0x8) {
+				// Listen; start timer immediately to help avoid this missing
+				timer_hw->alarm[HOST_TIMER] = time_us_32() + MIN_TLT;
+
+				// fetch data from the handler
+				uint8_t len = 0;
+				uint8_t dev = active_command.device;
+				device_handlers[dev]->listen_func(
+						dev,
+						active_command.id,
+						active_command.command & 0x3,
+						(uint8_t *) data_buf,
+						&len);
+				if (len == 0) {
+					// skip sending
+					phase = HOST_IDLE;
+					return;
+				}
+
+				// setup for sending
+				pio_sm_config c;
+				bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
+				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
+				for (uint8_t i = 0; i < len; i++) {
+					bus_tx_host_put(HOST_PIO, pio_sm, data_buf[i]);
+				}
+				timeout = 100 + len * 8 * 100 + 150;
+				// timer firing will actually start transfer
+			} else {
+				// no data transfer required
+				host_sync_complete();
+			}
+
+			break;
+		case HOST_RX:
+			// triggered by successful end of Talk
+			uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
+			dma_channel_abort(dma_chan);
+			uint8_t len = host_parse_rxbuf((uint8_t *) data_buf,
+					DMA_MAX_BITS - dma_remain);
+
+			// provide data to proper handler
+			uint8_t dev = active_command.device;
+			device_handlers[dev]->talk_func(
+					dev,
+					active_command.id,
+					active_command.command & 0x3,
+					(uint8_t *) data_buf,
+					len);
+
+			// successful completion
+			host_sync_complete();
+			break;
+
+		case HOST_TX_END:
+			host_sync_complete();
+
+			break;
+	}
 }
 
 /*
@@ -346,6 +510,22 @@ static host_err host_handle_assign(void)
 	}
 }
 
+// removes faulted devices and devices with no handler from the listing to
+// avoid dealing with them later
+static host_err host_prune_faulted(void)
+{
+	for (uint8_t i = 0; i < device_count; i++) {
+		if (devices[i].fault || device_handlers[i] == NULL) {
+			dbg_err("host drop dev %d", i);
+			for (uint8_t j = i; j < device_count - 1; j++) {
+				devices[j] = devices[j+1];
+				device_handlers[j] = device_handlers[j+1];
+			}
+			device_count--;
+		}
+	}
+}
+
 host_err host_reset(void)
 {
 	host_err err;
@@ -367,6 +547,23 @@ host_err host_reset(void)
 	if (err = host_handle_assign()) {
 		return err;
 	}
+
+	// make sure there is at least one working device before resuming
+	host_prune_faulted();
+	if (device_count == 0) {
+		dbg_err("disabling host, no devices!");
+		return HOSTERR_NO_DEVICES;
+	}
+
+	// switch back to sync mode if there are devices
+	irq_set_enabled(HOST_TIMER_IRQ, false);
+	irq_set_enabled(HOST_PIO_IRQ0, false);
+	queue_enabled = true;
+	phase = HOST_IDLE;
+	active_command.id = 0;
+	active_command.device = 0;
+	active_command.command = ((devices[0].address_cur) << 4)
+			| (uint8_t) COMMAND_TALK_0;
 }
 
 void host_init(void)
@@ -401,6 +598,7 @@ void host_init(void)
 	// install the interrupt handlers
 	irq_set_exclusive_handler(HOST_PIO_IRQ0, host_pio_isr);
 	irq_set_exclusive_handler(HOST_TIMER_IRQ, host_timer);
+	hw_set_bits(&timer_hw->inte, 1U << HOST_TIMER);
 
 	// setup PIO IRQ, don't enable in NVIC yet
 	pio_set_irq0_source_enabled(HOST_PIO, PIO_INTR_SM0_LSB << pio_sm, true);
@@ -522,35 +720,25 @@ host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len)
 	return cmd_status;
 }
 
-host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len, uint16_t *id)
+host_err host_cmd_async(uint8_t dev, bus_command cmd, uint16_t *id)
 {
 	if (! queue_enabled) {
 		return HOSTERR_ASYNC_DISABLED;
 	}
-	if (device >= device_count) {
-		return HOSTERR_INVALID_PARAM;
-	}
-	if (cmd == COMMAND_FLUSH && len != 0) {
-		return HOSTERR_INVALID_PARAM;
-	}
-	if (cmd != COMMAND_FLUSH && (len < 2 || len > 8)) {
+	if (dev >= device_count) {
 		return HOSTERR_INVALID_PARAM;
 	}
 
 	// rest needs to be in barrier to avoid ISR manipulating values
 	host_err result = HOSTERR_OK;
 	uint32_t isr = save_and_disable_interrupts();
-	if (queue_count < COMMAND_QUEUE_SIZE) {
+	if (queue_count < CMD_QUEUE_SIZE) {
 		*id = queue_id;
+		uint8_t queue_pos = (queue_tail + queue_count) & CMD_QUEUE_MASK;
 		queue[queue_pos].id = queue_id++;
-		queue[queue_pos].device = device;
-		queue[queue_pos].command = ((devices[device].address_cur) << 4)
-				| command;
-		if (len > 8) len = 8;
-		queue[queue_pos++].length = len;
-		if (queue_pos == COMMAND_QUEUE_SIZE) {
-			queue_pos = 0;
-		}
+		queue[queue_pos].device = dev;
+		queue[queue_pos].command = ((devices[dev].address_cur) << 4)
+				| (uint8_t) cmd;
 		queue_count++;
 	} else {
 		result = HOSTERR_FULL;
@@ -558,5 +746,3 @@ host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len, uint16_t *id)
 	restore_interrupts(isr);
 	return result;
 }
-
-

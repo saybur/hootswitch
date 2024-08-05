@@ -35,7 +35,8 @@
  * 2) The host goes through the handlers in reverse insertion order. The
  *    handlers will be interviewed to see if they want the device. If the
  *    device accepts it, that handler will be called with device information
- *    via `assign_func`.
+ *    via `assign_func`. This will likely need to update Register 3 with an SRQ
+ *    flag [TODO should this be automatic??]
  * 3) From this point, any time a command is completed on an assigned device
  *    the matching handler will be called back by the host implementation. See
  *    the list of calls for more details.
@@ -47,6 +48,7 @@
  * - void talk_func(uint8_t dev, uint16_t cid, uint8_t reg,
  *                  uint8_t *data, uint8_t data_len)
  * - void listen_func(uint8_t dev, uint16_t cid, uint8_t reg)
+ *                  uint8_t *data, uint8_t *data_len)
  * - void flush_func(uint8_t dev, uint16_t cid, uint8_t reg)
  * - void reset_func(void)
  * - void poll(void)
@@ -82,15 +84,17 @@
  * - (-) assign_func is called to grant control of a particular device to a
  *   handler. The handler will be called back with any information from this
  *   device.
- * - (!) [n] talk_func is called whenever the device has returned data for a
+ * - (!) talk_func is called whenever the device has returned data for a
  *   Talk Register command. If you set `accept_noop_talks` to true, this will
  *   be called with a length of 0 whenever a no-op talk occurs (which can be
  *   frequent, depending on the device). If false this is only called when
  *   there is data to be processed.
- * - (!) [n] listen_func and flush_func are called in response to a completed
- *   Listen and Flush command respectively. These are only issued in response
- *   to a request from the handler, so ID will never be 0.
- * - (-) [n] poll_func is called periodically to give time for your handler to
+ * - (!) listen_func is called to fetch data when the system is ready to send
+ *   the command to the device, during Tlt. This must return quickly to avoid
+ *   problems. Set the data in the array and the length you want to send.
+ * - (!) flush_func is called in response to a completed Flush command, to
+ *   let the handler know it has been sent. It can usually be ignored.
+ * - (-) poll_func is called periodically to give time for your handler to
  *   do whatever it wants. This is cooperative, do not perform excessive
  *   processing here if you can avoid it. See the driver notes for details,
  *   this works identically.
@@ -124,8 +128,8 @@ typedef struct {
 	void (*reset_func)(void);
 	bool (*interview_func)(volatile ndev_info*, uint8_t*);
 	void (*assign_func)(uint8_t, volatile ndev_info*);
-	void (*talk_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t*);
-	void (*listen_func)(uint8_t, uint16_t, uint8_t);
+	void (*talk_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t);
+	void (*listen_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t*);
 	void (*flush_func)(uint8_t, uint16_t, uint8_t);
 	void (*poll_func)(void);
 } ndev_handler;

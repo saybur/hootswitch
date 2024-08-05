@@ -20,8 +20,6 @@
 
 #include "handler.h"
 
-#define COMMAND_QUEUE_SIZE   16
-
 typedef enum {
 	HOSTERR_OK = 0,
 	HOSTERR_TIMEOUT = 1,
@@ -31,7 +29,8 @@ typedef enum {
 	HOSTERR_INVALID_PARAM = 5,
 	HOSTERR_LINE_STUCK = 6,
 	HOSTERR_TOO_MANY_DEVICES = 7,
-	HOSTERR_BAD_DEVICE = 8
+	HOSTERR_BAD_DEVICE = 8,
+	HOSTERR_NO_DEVICES = 9
 } host_err;
 
 typedef enum {
@@ -39,9 +38,11 @@ typedef enum {
 	COMMAND_LISTEN_0 = 0x8,
 	COMMAND_LISTEN_1 = 0x9,
 	COMMAND_LISTEN_2 = 0xA,
+	COMMAND_LISTEN_3 = 0xB,
 	COMMAND_TALK_0 =   0xC,
 	COMMAND_TALK_1 =   0xD,
-	COMMAND_TALK_2 =   0xE
+	COMMAND_TALK_2 =   0xE,
+	COMMAND_TALK_3 =   0xF
 } bus_command;
 
 /**
@@ -58,12 +59,12 @@ typedef enum {
  *
  * @param dev   device number from the register call.
  * @param cmd   ADB command to execute.
- * @param len   number of bytes to exchange in the command (if needed).
- * @param id    will be assigned an identifier, which will match the callback.
+ * @param id    will be assigned an identifier, which will match the callback;
+ *              some handlers may not care and can freely ignore this.
  * @return      true if the request could be queued, false otherwise; this is
- *              due to the queue being full, or an invalid device.
+ *              due to the queue being full or an invalid device.
  */
-host_err host_cmd_async(uint8_t dev, bus_command cmd, uint8_t len, uint16_t *id);
+host_err host_cmd_async(uint8_t dev, bus_command cmd, uint16_t *id);
 
 /**
  * Executes a synchronous command on the host bus.

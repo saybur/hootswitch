@@ -17,9 +17,13 @@
 
 #include "pico/stdlib.h"
 
+#include "../debug.h"
 #include "../handler.h"
 
 #include "keyboard.h"
+
+static volatile uint8_t buffer[2];
+static volatile uint8_t buffer_count;
 
 static void hndl_reset(void)
 {
@@ -31,29 +35,39 @@ static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
 	return info->dhid_cur == 0x01 || info->dhid_cur == 0x02;
 }
 
-static void hndl_assign(uint8_t, volatile ndev_info *info)
+static void hndl_assign(uint8_t id, volatile ndev_info *info)
 {
 	// TODO implement
 }
 
-static void hndl_talk(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t*)
+static void hndl_talk(uint8_t dev, uint16_t cid, uint8_t reg,
+		uint8_t *data, uint8_t data_len)
 {
-	// TODO implement
+	if (data_len > 2) {
+		buffer[0] = data[0];
+		buffer[1] = data[1];
+		buffer_count = 2;
+	}
 }
 
-static void hndl_listen(uint8_t, uint16_t, uint8_t)
+static void hndl_listen(uint8_t dev, uint16_t cid, uint8_t reg,
+		uint8_t *data, uint8_t *data_len)
 {
 	// TODO implement
+	*data_len = 0;
 }
 
-static void hndl_flush(uint8_t, uint16_t, uint8_t)
+static void hndl_flush(uint8_t dev, uint16_t cid, uint8_t reg)
 {
 	// TODO implement
 }
 
 static void hndl_poll(void)
 {
-	// TODO implement
+	if (buffer_count == 2) {
+		dbg("kbd: %d / %d", buffer[0], buffer[1]);
+		buffer_count = 0;
+	}
 }
 
 static ndev_handler keyboard_handler = {
