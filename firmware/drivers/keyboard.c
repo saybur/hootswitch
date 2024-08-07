@@ -43,11 +43,12 @@ static void hndl_assign(volatile ndev_info *info, uint8_t id)
 static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
-	if (data_len > 2) {
+	if (data_len >= 2) {
 		buffer[0] = data[0];
 		buffer[1] = data[1];
 		buffer_count = 2;
 	}
+	dbg("kbd: %d %d", buffer[0], buffer[1]);
 }
 
 static void hndl_listen(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg)

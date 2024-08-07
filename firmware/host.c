@@ -208,24 +208,27 @@ static void host_timer(void)
 				cmd_last_dev = queue[cmd_idx].device;
 			} else {
 				// none pending, check if there is space to add a command;
-				// if idle polling is not enabled then always take this branch
-				if (! idle_poll
-						|| cmd_last_dev >= device_count
-						|| queue_count >= CMD_QUEUE_SIZE) {
-					// no, short-circuit to wait a bit for space to free up
-					// or the init routines to help us out a bit
-					timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
-					return;
-				} else {
+				// if idle polling is not enabled then always take next branch
+				// (device_count == 0 protection in _reset() and _cmd())
+				if (idle_poll && queue_count < CMD_QUEUE_SIZE) {
 					// there is space, insert a new Talk 0 prompt for us
 					cmd_idx = (queue_tail + queue_count) & CMD_QUEUE_MASK;
+					queue_count++;
 					queue[cmd_idx].state = CMD_PENDING;
 					queue[cmd_idx].id = 0;
+					if (srq) cmd_last_dev++;
+					if (cmd_last_dev >= device_count) cmd_last_dev = 0;
 					queue[cmd_idx].device = cmd_last_dev;
+					queue[cmd_idx].type = TYPE_TALK;
 					queue[cmd_idx].command =
 							((devices[cmd_last_dev].address_cur) << 4)
 							| (uint8_t) COMMAND_TALK_0;
 					queue[cmd_idx].error = HOSTERR_OK;
+				} else {
+					// no, short-circuit to wait a bit for space to free up
+					// or the init routines to help us out a bit
+					timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
+					return;
 				}
 			}
 
@@ -716,7 +719,8 @@ void host_poll(void)
 			} else {
 				switch (queue[idx].type) {
 				case TYPE_TALK:
-					if (hndl->talk_func) {
+					if (hndl->talk_func
+							&& ! (queue[idx].length == 0 && ! hndl->accept_noop_talks)) {
 						hndl->talk_func(
 								queue[idx].device,
 								queue[idx].error,

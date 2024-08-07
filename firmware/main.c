@@ -71,5 +71,7 @@ int main(void)
 	led_machine(0, 64);
 	led_machine(2, 64);
 
-	while (1) tight_loop_contents();
+	while (1) {
+		host_poll();
+	}
 }
