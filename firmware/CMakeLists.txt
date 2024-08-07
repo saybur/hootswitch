@@ -12,7 +12,7 @@ pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 
 target_sources(hootswitch PRIVATE
 		drivers/keyboard.c
-		bus.c buzzer.c debug.c device.c driver.c handler.c host.c led.c manager.c main.c
+		bus.c buzzer.c debug.c device.c driver.c handler.c host.c host_sync.c led.c manager.c main.c util.c
 		)
 
 target_link_libraries(hootswitch

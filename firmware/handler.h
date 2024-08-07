@@ -21,6 +21,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "host_err.h"
+
 /*
  * Defines an external interface for interoperating with native devices on the
  * host side of the switch.
@@ -35,8 +37,7 @@
  * 2) The host goes through the handlers in reverse insertion order. The
  *    handlers will be interviewed to see if they want the device. If the
  *    device accepts it, that handler will be called with device information
- *    via `assign_func`. This will likely need to update Register 3 with an SRQ
- *    flag [TODO should this be automatic??]
+ *    via `assign_func`.
  * 3) From this point, any time a command is completed on an assigned device
  *    the matching handler will be called back by the host implementation. See
  *    the list of calls for more details.
@@ -44,12 +45,11 @@
  * The functions to implement are as follows.
  *
  * - bool interview_func(ndev_info *info, uint8_t *err)
- * - void assign_func(uint8_t dev, ndev_info *info)
- * - void talk_func(uint8_t dev, uint16_t cid, uint8_t reg,
+ * - void assign_func(ndev_info *info, uint8_t dev)
+ * - void talk_func(uint8_t dev, host_err err, uint16_t cid, uint8_t reg,
  *                  uint8_t *data, uint8_t data_len)
- * - void listen_func(uint8_t dev, uint16_t cid, uint8_t reg)
- *                  uint8_t *data, uint8_t *data_len)
- * - void flush_func(uint8_t dev, uint16_t cid, uint8_t reg)
+ * - void listen_func(uint8_t dev, host_err err, uint16_t cid, uint8_t reg)
+ * - void flush_func(uint8_t dev, host_err err, uint16_t cid)
  * - void reset_func(void)
  * - void poll(void)
  *
@@ -58,21 +58,25 @@
  * - `dev` is a host device ID value that uniquely identifies a specific piece
  *   of hardware (it is distinct from the device ADB address). Each call
  *   receives this to help you keep track of multiple devices.
+ * - `err` receives any errors that happened during execution of the command
+ *   or subsequent data phase.
  * - `id` is a per-command identifier that is 1:1 with the value provided by
  *   the async command queue system, to help you keep track of which command
  *   the response is in relation to. This will be 0 if there is no associated
- *   async command.
+ *   async command (due to how ADB works this implies Talk Register 0).
  * - `reg` is the ADB register, from 0 - 3. Do not mess with the device address
  *   or you will confuse the host implementation (changing the handler of a
- *   device you own is fine as long as you update the appropriate struct).
+ *   device you own is fine as long as you update the struct given in
+ *   `assign_func`).
  *
  * Notes for each:
  *
- * - (-) reset_func is called whenever a host-side reset occurs. This will
- *   always happen once at the beginning of the program. It may happen again
- *   if someone resets the host later. When received, drop all devices you
- *   own.
- * - (-) interview_func is called with information about a device, asking the
+ * - reset_func is called whenever a host-side reset occurs. This will
+ *   always happen at least once at the beginning of the program. It may happen
+ *   again if someone resets the host later. When received, drop all devices
+ *   you own, immediately cease sending commands, and reset your internal state
+ *   to startup defaults.
+ * - interview_func is called with information about a device, asking the
  *   handler to give a yes/no answer to whether it should be assigned this
  *   device. Simpler handlers can just check the ADB "device handler ID" (DHID)
  *   to answer the question. More compliated handlers may want to query the
@@ -81,35 +85,27 @@
  *   the device, false otherwise. Return a nonzero value in the int pointer if
  *   a malfunction occurs that should block further use of the device by other
  *   handlers.
- * - (-) assign_func is called to grant control of a particular device to a
+ * - assign_func is called to grant control of a particular device to a
  *   handler. The handler will be called back with any information from this
- *   device.
- * - (!) talk_func is called whenever the device has returned data for a
+ *   device. If you set `enable_srq` the SRQ flag will be automatically updated
+ *   once this call is completed (not required, you can do it yourself if you
+ *   want).
+ * - talk_func is called whenever the device has returned data for a
  *   Talk Register command. If you set `accept_noop_talks` to true, this will
- *   be called with a length of 0 whenever a no-op talk occurs (which can be
- *   frequent, depending on the device). If false this is only called when
- *   there is data to be processed.
- * - (!) listen_func is called to fetch data when the system is ready to send
+ *   be called with a length of 0 whenever a no-op talk occurs, which can be
+ *   frequent depending on the device. If false this is only called when there
+ *   is data to be processed.
+ * - [n] listen_func is called to fetch data when the system is ready to send
  *   the command to the device, during Tlt. This must return quickly to avoid
  *   problems. Set the data in the array and the length you want to send.
- * - (!) flush_func is called in response to a completed Flush command, to
- *   let the handler know it has been sent. It can usually be ignored.
- * - (-) poll_func is called periodically to give time for your handler to
+ * - [n] flush_func is called in response to a completed Flush command.
+ * - [n] poll_func is called periodically to give time for your handler to
  *   do whatever it wants. This is cooperative, do not perform excessive
  *   processing here if you can avoid it. See the driver notes for details,
  *   this works identically.
  *
- * The functions with (!) above are invoked from the interrupt context. As a
- * result it is important they return _quickly_ and work with variables set to
- * be `volatile` in your code.
- *
- * The functions with (-) are invoked from the process context. You may still
- * (generally) receive interrupt commands while these are executing.
- *
- * The functions marked with [n] may be NULL.
- *
- * Unless otherwise noted none of these calls are reentrant, are NOT safe for
- * use from ISRs and/or the other CPU core.
+ * All functions above are invoked from the process context. The functions
+ * marked with [n] may be NULL.
  */
 
 // reflects information from register 3
@@ -125,12 +121,13 @@ typedef struct {
 typedef struct {
 	const char *name;
 	bool accept_noop_talks;
+	bool enable_srq;
 	void (*reset_func)(void);
 	bool (*interview_func)(volatile ndev_info*, uint8_t*);
-	void (*assign_func)(uint8_t, volatile ndev_info*);
-	void (*talk_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t);
-	void (*listen_func)(uint8_t, uint16_t, uint8_t, uint8_t*, uint8_t*);
-	void (*flush_func)(uint8_t, uint16_t, uint8_t);
+	void (*assign_func)(volatile ndev_info*, uint8_t);
+	void (*talk_func)(uint8_t, host_err, uint16_t, uint8_t, uint8_t*, uint8_t);
+	void (*listen_func)(uint8_t, host_err, uint16_t, uint8_t);
+	void (*flush_func)(uint8_t, host_err, uint16_t);
 	void (*poll_func)(void);
 } ndev_handler;
 

@@ -61,7 +61,11 @@ int main(void)
 	dbg(PROGRAM_NAME);
 
 	handler_init();
-	host_reset();
+
+	host_err herr;
+	if (herr = host_reset()) {
+		dbg_err("host reset err %d", herr);
+	}
 	driver_init();
 
 	led_machine(0, 64);

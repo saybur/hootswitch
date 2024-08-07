@@ -26,24 +26,23 @@
 #include "debug.h"
 #include "hardware.h"
 #include "host.h"
+#include "host_sync.h"
 #include "led.h"
+#include "util.h"
 
 #define DEVICE_MAX        14
 #define DMA_MAX_BITS      65
-
-// aliases for header versions for use in sync call
-#define TALK_REG3         0xF
-#define LISTEN_REG3       0xB
 
 // see the PIO host definitions for what these values mean
 #define PIO_CMD_OFFSET    2
 #define PIO_RESET_VAL     59
 #define PIO_CMD_VAL       15
-#define PIO_TIMEOUT_VAL   110
+#define PIO_RX_TIME_VAL   110
 
 // a few more common timer-based timeouts
 #define MIN_TLT           140
-#define COMMAND_TIMEOUT   1500
+#define COMMAND_TIMEOUT   (800 + 70 + 800 + 65 + 300 + 200)
+#define RESET_TIMEOUT     (2200 + COMMAND_TIMEOUT)
 #define RX_MAX_TIMEOUT    (300 + 66 * 130)
 #define TYP_CMD_GAP       1000
 
@@ -59,9 +58,9 @@ static dma_channel_config dma_rx_cfg;
 typedef enum {
 	HOST_IDLE,
 	HOST_COMMAND,
-	HOST_RX,
-	HOST_TX_START,
-	HOST_TX_END
+	HOST_TALK,
+	HOST_LISTEN_TLT,
+	HOST_LISTEN
 } host_phase;
 
 // devID->address and devID->handler tables
@@ -69,15 +68,33 @@ static volatile ndev_info devices[DEVICE_MAX];
 static volatile ndev_handler *device_handlers[DEVICE_MAX];
 static volatile uint8_t device_count;
 
-// queue for requested commands on devices, implemented as a ring buffer
+/*
+ * Queue for requested commands on devices, implemented as a simple ring buffer
+ * with a tail pointer and size value. Queue size must be a power of 2. Queue
+ * mask must be one less than that to allow for efficient wrap operations.
+ *
+ * `queue_id` is used to generate `id` values.
+ *
+ * The state tracker here is used by the async routines to hunt for commands
+ * that can be sent on the bus. See below for details.
+ */
 #define CMD_QUEUE_SIZE 16
 #define CMD_QUEUE_MASK 15
+typedef enum {
+	CMD_EMPTY = 0,
+	CMD_PENDING,
+	CMD_DONE
+} cmd_state;
 typedef struct {
+	cmd_state state;
 	uint16_t id;
 	uint8_t device;
+	cmd_type type;
 	uint8_t command;
+	uint8_t data[8];
+	uint8_t length;
+	host_err error;
 } host_command;
-static volatile bool queue_enabled;
 static volatile host_command queue[CMD_QUEUE_SIZE];
 static volatile uint8_t queue_tail;
 static volatile uint8_t queue_count;
@@ -108,34 +125,11 @@ static void host_pio_load_tx(bool tx)
 	}
 }
 
-/*
- * Stall until the PIO IRQ sets or timeout occurs. Only used with sync calls.
- * This will stop the state machine after timeout, clear the IRQ, and ensure
- * the line driver has been released. Returns true if flag set, false
- * otherwise.
- */
-static bool host_busy_wait_pio_irq(uint16_t timeout)
-{
-	uint32_t elapsed = 0;
-	while (! (HOST_PIO->irq & (1U << pio_sm))
-			&& elapsed <= timeout) {
-		busy_wait_us_32(5);
-		elapsed += 5;
-	}
-
-	// stop state machine, get IRQ status, clear, and make sure output is idle
-	pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-	bool res = HOST_PIO->irq & (1U << pio_sm);
-	pio_interrupt_clear(HOST_PIO, pio_sm);
-	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
-	return res;
-}
-
 static volatile uint16_t rxbuf[DMA_MAX_BITS];
 
 // parses device reception buffer and writes result to supplied byte array
 // returns the number of recognized bytes
-static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
+static uint8_t host_parse_rxbuf(volatile uint8_t *data, uint8_t bits)
 {
 	if (bits > DMA_MAX_BITS) bits = DMA_MAX_BITS;
 	if (bits < 1) return 0;
@@ -163,11 +157,13 @@ static uint8_t host_parse_rxbuf(uint8_t *data, uint8_t bits)
  * ----------------------------------------------------------------------------
  */
 
+static volatile bool idle_poll;
 static volatile host_phase phase = HOST_IDLE;
-static volatile host_command active_command;
-static volatile uint8_t data_buf[8];
 static volatile uint16_t timeout;
 static volatile bool srq;
+
+static uint8_t cmd_idx;
+static uint8_t cmd_last_dev;
 
 // generic PIO stop routine for the timer
 static inline void host_stop_pio(void)
@@ -178,9 +174,8 @@ static inline void host_stop_pio(void)
 }
 
 // generic setup for calling back into the timer when a command completes
-static inline void host_sync_complete(void)
+static inline void host_cmd_complete(void)
 {
-	host_stop_pio();
 	phase = HOST_IDLE;
 	timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
 }
@@ -195,27 +190,43 @@ static inline void host_sync_complete(void)
  */
 static void host_timer(void)
 {
+	// clear trigger that brought us here
+	timer_hw->intr = 1U << HOST_TIMER;
+
 	switch (phase)
 	{
 		case HOST_IDLE:
-			/*
-			 * Three options, in descending order:
-			 *
-			 * 1) queued command,
-			 * 2) SRQ,
-			 * 3) poll Talk0 at current device.
-			 */
-			if (queue_count) {
-				active_command = queue[queue_tail];
-				queue_tail++;
-				queue_count--;
+			// scan the queue looking for a pending command
+			cmd_idx = queue_tail;
+			for (uint8_t i = 0; i < queue_count - 1; i++) {
+				if (queue[cmd_idx].state == CMD_PENDING) break;
+				cmd_idx = (cmd_idx + i) & CMD_QUEUE_MASK;
+			}
+
+			if (queue_count > 0 && queue[cmd_idx].state == CMD_PENDING) {
+				cmd_idx = cmd_idx;
+				cmd_last_dev = queue[cmd_idx].device;
 			} else {
-				uint8_t dev = active_command.device;
-				if (srq) dev++;
-				active_command.id = 0;
-				active_command.device = dev;
-				active_command.command = ((devices[dev].address_cur) << 4)
-						| (uint8_t) COMMAND_TALK_0;
+				// none pending, check if there is space to add a command;
+				// if idle polling is not enabled then always take this branch
+				if (! idle_poll
+						|| cmd_last_dev >= device_count
+						|| queue_count >= CMD_QUEUE_SIZE) {
+					// no, short-circuit to wait a bit for space to free up
+					// or the init routines to help us out a bit
+					timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
+					return;
+				} else {
+					// there is space, insert a new Talk 0 prompt for us
+					cmd_idx = (queue_tail + queue_count) & CMD_QUEUE_MASK;
+					queue[cmd_idx].state = CMD_PENDING;
+					queue[cmd_idx].id = 0;
+					queue[cmd_idx].device = cmd_last_dev;
+					queue[cmd_idx].command =
+							((devices[cmd_last_dev].address_cur) << 4)
+							| (uint8_t) COMMAND_TALK_0;
+					queue[cmd_idx].error = HOSTERR_OK;
+				}
 			}
 
 			// start command
@@ -223,38 +234,49 @@ static void host_timer(void)
 			pio_sm_config c;
 			bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
 			pio_sm_init(HOST_PIO, pio_sm, pio_offset + PIO_CMD_OFFSET, &c);
-			bus_tx_host_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
-			bus_tx_host_put(HOST_PIO, pio_sm, active_command.command);
+			if (queue[cmd_idx].command == 0x00) {
+				// use alternate long reset pulse
+				bus_tx_host_put(HOST_PIO, pio_sm, PIO_RESET_VAL);
+				timeout = RESET_TIMEOUT;
+			} else {
+				// normal attention signal
+				bus_tx_host_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
+				timeout = COMMAND_TIMEOUT;
+			}
+			bus_tx_host_put(HOST_PIO, pio_sm, queue[cmd_idx].command);
 			pio_sm_set_enabled(HOST_PIO, pio_sm, true);
 
 			// advance and setup fallback timer
 			phase = HOST_COMMAND;
-			timer_hw->alarm[HOST_TIMER] = time_us_32() + COMMAND_TIMEOUT;
+			timer_hw->alarm[HOST_TIMER] = time_us_32() + timeout;
 			break;
 
 		case HOST_COMMAND:
-		case HOST_RX: // this one should be very rare
-			// if invoked, command step timed out
-			host_sync_complete();
+		case HOST_TALK:
+			// should only happen if the line sticks low, should be rare
+			host_stop_pio();
+			queue[cmd_idx].state = CMD_DONE;
+			queue[cmd_idx].error = HOSTERR_LINE_STUCK;
+			host_cmd_complete();
 			break;
 
-		case HOST_TX_START:
+		case HOST_LISTEN_TLT:
 			// at end of Tlt, start transmission
 			pio_sm_set_enabled(HOST_PIO, pio_sm, true);
-			// and add a timeout safety
+			// add timeout safety, calculated in PIO ISR
 			timer_hw->alarm[HOST_TIMER] = time_us_32() + timeout;
-			phase = HOST_TX_END;
+			phase = HOST_LISTEN;
 
 			break;
-		case HOST_TX_END:
-			// send failed
-			host_sync_complete();
+		case HOST_LISTEN:
+			// line locked up
+			host_stop_pio();
+			queue[cmd_idx].state = CMD_DONE;
+			queue[cmd_idx].error = HOSTERR_LINE_STUCK;
+			host_cmd_complete();
 
 			break;
 	}
-
-	// clear before returning
-	timer_hw->intr = 1U << HOST_TIMER;
 }
 
 // ISR callback for the PIO state machine
@@ -262,24 +284,28 @@ static void host_pio_isr(void)
 {
 	// unconditionally stop PIO
 	host_stop_pio();
+	// cancel fallback alarm / make sure it isn't waiting to fire
+	timer_hw->armed = 1U << HOST_TIMER;
+	timer_hw->intr = 1U << HOST_TIMER;
 
 	switch (phase)
 	{
 		case HOST_COMMAND:
 			// triggered by successful end of command
 
-			// check SRQ flag and clear it
+			// load SRQ state and clear it out of the PIO
 			srq = HOST_PIO->irq & (1U << (pio_sm + 4));
 			pio_interrupt_clear(HOST_PIO, pio_sm + 4);
 
-			uint8_t cmd_type = active_command.command & 0xC;
-			if (cmd_type == 0xC) {
-				// Talk, prepare for reception
+			// check if there is a follow-on data phase
+			pio_sm_config c;
+			switch (queue[cmd_idx].type) {
+			case TYPE_TALK:
 				host_pio_load_tx(false);
-				pio_sm_config c;
+
 				bus_rx_host_pio_config(&c, pio_offset, A_DI_PIN);
 				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
-				pio_sm_put(HOST_PIO, pio_sm, PIO_TIMEOUT_VAL);
+				pio_sm_put(HOST_PIO, pio_sm, PIO_RX_TIME_VAL);
 				dma_channel_configure(dma_chan, &dma_rx_cfg,
 						rxbuf,
 						&(HOST_PIO->rxf[pio_sm]),
@@ -290,67 +316,53 @@ static void host_pio_isr(void)
 				pio_sm_set_enabled(HOST_PIO, pio_sm, true);
 
 				// move to next phase, include safety valve
-				phase = HOST_RX;
+				phase = HOST_TALK;
 				timer_hw->alarm[HOST_TIMER] = time_us_32() + RX_MAX_TIMEOUT;
-
-			} else if (cmd_type == 0x8) {
-				// Listen; start timer immediately to help avoid this missing
+				break;
+			case TYPE_LISTEN:
+				// start timer immediately to avoid missing the window
 				timer_hw->alarm[HOST_TIMER] = time_us_32() + MIN_TLT;
 
-				// fetch data from the handler
-				uint8_t len = 0;
-				uint8_t dev = active_command.device;
-				device_handlers[dev]->listen_func(
-						dev,
-						active_command.id,
-						active_command.command & 0x3,
-						(uint8_t *) data_buf,
-						&len);
-				if (len == 0) {
-					// skip sending
-					phase = HOST_IDLE;
-					return;
-				}
-
 				// setup for sending
-				pio_sm_config c;
 				bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
 				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
-				for (uint8_t i = 0; i < len; i++) {
-					bus_tx_host_put(HOST_PIO, pio_sm, data_buf[i]);
+				for (uint8_t i = 0; i < queue[cmd_idx].length; i++) {
+					bus_tx_host_put(HOST_PIO, pio_sm, queue[cmd_idx].data[i]);
 				}
-				timeout = 100 + len * 8 * 100 + 150;
-				// timer firing will actually start transfer
-			} else {
-				// no data transfer required
-				host_sync_complete();
-			}
+				timeout = 100 + 800 * queue[cmd_idx].length + 250;
 
+				// timer firing will start transfer
+				phase = HOST_LISTEN_TLT;
+				break;
+			default:
+				// no data transfer required
+				queue[cmd_idx].state = CMD_DONE;
+				host_cmd_complete();
+			}
 			break;
-		case HOST_RX:
-			// triggered by successful end of Talk
+
+		case HOST_TALK:
+			// normal end of Talk, either timeout or data response
 			uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
 			dma_channel_abort(dma_chan);
-			uint8_t len = host_parse_rxbuf((uint8_t *) data_buf,
+			uint8_t len = host_parse_rxbuf(queue[cmd_idx].data,
 					DMA_MAX_BITS - dma_remain);
+			queue[cmd_idx].length = len;
+			if (len == 0) queue[cmd_idx].error = HOSTERR_TIMEOUT;
 
-			// provide data to proper handler
-			uint8_t dev = active_command.device;
-			device_handlers[dev]->talk_func(
-					dev,
-					active_command.id,
-					active_command.command & 0x3,
-					(uint8_t *) data_buf,
-					len);
-
-			// successful completion
-			host_sync_complete();
+			queue[cmd_idx].state = CMD_DONE;
+			host_cmd_complete();
 			break;
 
-		case HOST_TX_END:
-			host_sync_complete();
-
+		case HOST_LISTEN:
+			queue[cmd_idx].state = CMD_DONE;
+			host_cmd_complete();
 			break;
+
+		default:
+			queue[cmd_idx].state = CMD_DONE;
+			queue[cmd_idx].error = HOSTERR_BAD_STATE;
+			host_cmd_complete();
 	}
 }
 
@@ -363,30 +375,27 @@ static void host_pio_isr(void)
 // moves from async->sync (if needed) and sends the actual reset command
 static host_err host_reset_bus(void)
 {
-	if (queue_enabled) {
-		// abort any existing tasks and go async->sync
-		irq_set_enabled(HOST_TIMER_IRQ, false);
-		irq_set_enabled(HOST_PIO_IRQ0, false);
-		pio_sm_set_enabled(HOST_PIO, pio_sm, false);
-		// clear local interrupt sources
-		pio_interrupt_clear(HOST_PIO, pio_sm);
-		timer_hw->armed = 1U << HOST_TIMER;
-		// dwell for a bit to time out anything stopped above
-		queue_enabled = false;
-		busy_wait_us(150);
+	// send a reset to all handlers
+	for (uint8_t i = 0; i < handler_count(); i++) {
+		ndev_handler *handler;
+		handler_get(i, &handler);
+		if (handler != NULL) {
+			handler->reset_func();
+		}
 	}
 
+	// drain the queue and wait for the system to go idle
+	idle_poll = false;
+	queue_count = 0;
+	while (phase != HOST_IDLE);
+
 	// send reset command
-	return host_cmd_sync(0xFF, 0x00, NULL, NULL);
+	return host_sync_cmd(0xFF, 0x00, NULL, NULL);
 }
 
 // performs ADB address shuffling
 static host_err host_reset_addresses(void)
 {
-	if (queue_enabled) {
-		return HOSTERR_SYNC_DISABLED;
-	}
-
 	// wipe existing device/handler assignments
 	for (uint8_t i = 0; i < DEVICE_MAX; i++) {
 		device_handlers[i] = NULL;
@@ -405,7 +414,8 @@ static host_err host_reset_addresses(void)
 
 		// move all devices at address to free slots
 		datalen = 2;
-		while (! (err = host_cmd_sync(0xFF, (i << 4) | TALK_REG3, data, &datalen))) {
+		uint8_t cmd = (i << 4) | ((uint8_t) COMMAND_TALK_3);
+		while (! (err = host_sync_cmd(0xFF, cmd, data, &datalen))) {
 			// did device return the right amount of data?
 			if (datalen != 2) {
 				dbg_err("    dev reg3 != 2b, %d", datalen);
@@ -421,7 +431,8 @@ static host_err host_reset_addresses(void)
 			data[0] = addr_free;
 			data[1] = 0xFE;
 			datalen = 2;
-			if (err = host_cmd_sync(0xFF, (i << 4) | LISTEN_REG3, data, &datalen)) {
+			uint8_t cmd_move = (i << 4) | ((uint8_t) COMMAND_LISTEN_3);
+			if (err = host_sync_cmd(0xFF, cmd_move, data, &datalen)) {
 				dbg_err("    (!) %d", err);
 				return err;
 			}
@@ -453,10 +464,11 @@ static host_err host_reset_addresses(void)
 		if (dev_at_addr > 0) {
 			addr_free++;
 			dbg("    mov $%X, $%X", i, addr_free);
-			data[0] = addr_free;
+			data[0] = i;
 			data[1] = 0x00;
 			datalen = 2;
-			if (err = host_cmd_sync(0xFF, (addr_free << 4) | LISTEN_REG3, data, &datalen)) {
+			cmd = (addr_free << 4) | ((uint8_t) COMMAND_LISTEN_3);
+			if (err = host_sync_cmd(0xFF, cmd, data, &datalen)) {
 				dbg_err("    (!) %d", err);
 				return err;
 			}
@@ -469,8 +481,7 @@ static host_err host_reset_addresses(void)
 	return HOSTERR_OK;
 }
 
-// resets handlers and assigns devices to them
-static host_err host_handle_assign(void)
+static host_err host_handle_setup(void)
 {
 	// perform a reset on all handlers
 	for (uint8_t i = 0; i < handler_count(); i++) {
@@ -544,7 +555,7 @@ host_err host_reset(void)
 	}
 
 	dbg("assign handlers");
-	if (err = host_handle_assign()) {
+	if (err = host_handle_setup()) {
 		return err;
 	}
 
@@ -555,15 +566,8 @@ host_err host_reset(void)
 		return HOSTERR_NO_DEVICES;
 	}
 
-	// switch back to sync mode if there are devices
-	irq_set_enabled(HOST_TIMER_IRQ, false);
-	irq_set_enabled(HOST_PIO_IRQ0, false);
-	queue_enabled = true;
-	phase = HOST_IDLE;
-	active_command.id = 0;
-	active_command.device = 0;
-	active_command.command = ((devices[0].address_cur) << 4)
-			| (uint8_t) COMMAND_TALK_0;
+	// re-enable general polling of Talk 0
+	idle_poll = true;
 }
 
 void host_init(void)
@@ -600,8 +604,13 @@ void host_init(void)
 	irq_set_exclusive_handler(HOST_TIMER_IRQ, host_timer);
 	hw_set_bits(&timer_hw->inte, 1U << HOST_TIMER);
 
-	// setup PIO IRQ, don't enable in NVIC yet
-	pio_set_irq0_source_enabled(HOST_PIO, PIO_INTR_SM0_LSB << pio_sm, true);
+	// set PIO to interrupt on the SM IRQ bit
+	hw_set_bits(&HOST_PIO->inte0, 1U << (8 + pio_sm));
+
+	// spin up the interrupts and fire the first pulse to get things going
+	irq_set_enabled(HOST_TIMER_IRQ, true);
+	irq_set_enabled(HOST_PIO_IRQ0, true);
+	timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
 }
 
 /*
@@ -610,123 +619,33 @@ void host_init(void)
  * ----------------------------------------------------------------------------
  */
 
-host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len)
+host_err host_cmd(uint8_t dev, uint8_t cmd, uint16_t *id,
+		uint8_t *data, uint8_t len)
 {
-	// block sync commands once async has started
-	if (queue_enabled) return HOSTERR_SYNC_DISABLED;
-
-	// buffer/length must be present if I/O is needed
-	if (cmd & 0xC) {
-		if (data == NULL || len == NULL) return HOSTERR_INVALID_PARAM;
-		if (*len > 8) return HOSTERR_INVALID_PARAM;
-	}
-
-	// special case handling for unspecified devices, see header for details
-	if (dev != 0xFF) {
-		if (dev >= device_count) return HOSTERR_INVALID_PARAM;
-		uint8_t addr = devices[dev].address_cur;
-		cmd = (cmd & 0xF) | ((addr & 0xF) << 4);
-	}
-
-	// load in correct program for transmitting
-	host_pio_load_tx(true);
-
-	// execute the requested command
-	uint16_t timeout_base;
-	pio_sm_config c;
-	bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
-	pio_sm_init(HOST_PIO, pio_sm, pio_offset + PIO_CMD_OFFSET, &c);
-	if (cmd == 0x00) {
-		// reset, including long pulse
-		bus_tx_host_put(HOST_PIO, pio_sm, PIO_RESET_VAL);
-		timeout_base = 3000;
-	} else {
-		bus_tx_host_put(HOST_PIO, pio_sm, PIO_CMD_VAL);
-		timeout_base = 800;
-	}
-	bus_tx_host_put(HOST_PIO, pio_sm, cmd);
-	pio_sm_set_enabled(HOST_PIO, pio_sm, true);
-
-	// wait for the state machine to complete operation, then clear IRQs
-	bool cmdres = host_busy_wait_pio_irq(timeout_base + 100 * 9 + 400);
-	if (! cmdres) {
-		// timed out, should only happen if line gets stuck low
-		return HOSTERR_LINE_STUCK;
-	}
-
-	// is there a data transfer step?
-	host_err cmd_status = HOSTERR_OK;
-	uint8_t xfer = (cmd & 0xC) >> 2;
-	if (xfer == 0x3) {
-		// Talk, we'll be reading from device
-		host_pio_load_tx(false);
-		bus_rx_host_pio_config(&c, pio_offset, A_DI_PIN);
-		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
-		pio_sm_put(HOST_PIO, pio_sm, PIO_TIMEOUT_VAL);
-		dma_channel_configure(dma_chan, &dma_rx_cfg,
-				rxbuf,
-				&(HOST_PIO->rxf[pio_sm]),
-				DMA_MAX_BITS, // 8 bytes plus start/stop bits
-				true);
-
-		// start immediately, the PIO will stall until data comes in
-		pio_sm_set_enabled(HOST_PIO, pio_sm, true);
-
-		// wait for maximum possible legal data length, just in case something
-		// gets really stuck
-		bool ok = host_busy_wait_pio_irq(300 + 66 * 130);
-		uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
-		dma_channel_abort(dma_chan);
-		if (! ok) {
-			// generally should only happen if the remote keeps toggling the
-			// line for longer than it is allowed, treat as stuck
-			*len = 0;
-			return HOSTERR_LINE_STUCK;
-		}
-
-		// if we got anything consider it not to be a timeout, just report
-		if (dma_remain == DMA_MAX_BITS) {
-			*len = 0;
-			return HOSTERR_TIMEOUT;
-		} else {
-			*len = host_parse_rxbuf(data, DMA_MAX_BITS - dma_remain);
-		}
-
-	} else if (xfer == 0x2) {
-		// Listen, send data; TX FIFO joined so it can fit all 8 if needed
-		bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
-		pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
-		for (uint8_t i = 0; i < *len; i++) {
-			bus_tx_host_put(HOST_PIO, pio_sm, data[i]);
-		}
-
-		// wait for min Tlt to expire (likely more due to above work)
-		busy_wait_us_32(140);
-		// then proceed to send
-		pio_sm_set_enabled(HOST_PIO, pio_sm, true);
-
-		// wait for the state machine to finish sending
-		bool ok = host_busy_wait_pio_irq(100 + *len * 8 * 100 + 150);
-		if (! ok) {
-			// as before, only occurs if line gets stuck low
-			cmd_status = HOSTERR_LINE_STUCK;
-		}
-
-	} else {
-		// no data transfer, just wait for Tlt to expire
-		busy_wait_us_32(140);
-	}
-
-	return cmd_status;
-}
-
-host_err host_cmd_async(uint8_t dev, bus_command cmd, uint16_t *id)
-{
-	if (! queue_enabled) {
-		return HOSTERR_ASYNC_DISABLED;
-	}
-	if (dev >= device_count) {
+	if (dev != 0xFF && dev >= device_count) {
 		return HOSTERR_INVALID_PARAM;
+	}
+
+	cmd_type type = util_parse_cmd_type(cmd);
+
+	if (type == TYPE_INVALID) {
+		return HOSTERR_INVALID_PARAM;
+	}
+	// only special devices are allowed to issue reset
+	if (dev != 0xFF && type == TYPE_RESET) {
+		return HOSTERR_INVALID_PARAM;
+	}
+
+	// disallow address-based commands when using a device index
+	if (dev != 0xFF && cmd & 0xF0) {
+		return HOSTERR_INVALID_PARAM;
+	}
+
+	// Listen needs parameters and good length
+	if (type == TYPE_LISTEN) {
+		if (data == NULL || len < 2 || len > 8) {
+			return HOSTERR_INVALID_PARAM;
+		}
 	}
 
 	// rest needs to be in barrier to avoid ISR manipulating values
@@ -734,15 +653,108 @@ host_err host_cmd_async(uint8_t dev, bus_command cmd, uint16_t *id)
 	uint32_t isr = save_and_disable_interrupts();
 	if (queue_count < CMD_QUEUE_SIZE) {
 		*id = queue_id;
+
 		uint8_t queue_pos = (queue_tail + queue_count) & CMD_QUEUE_MASK;
+		queue[queue_pos].state = CMD_PENDING;
 		queue[queue_pos].id = queue_id++;
 		queue[queue_pos].device = dev;
-		queue[queue_pos].command = ((devices[dev].address_cur) << 4)
-				| (uint8_t) cmd;
+		if (dev != 0xFF) {
+			queue[queue_pos].command = ((devices[dev].address_cur) << 4)
+					| (uint8_t) cmd;
+		} else {
+			queue[queue_pos].command = cmd;
+		}
+		queue[queue_pos].type = type;
+		queue[cmd_idx].error = HOSTERR_OK; // only set on problems
+
+		// submit Listen data if needed
+		if (type == TYPE_LISTEN) {
+			for (uint8_t i = 0; i < len; i++) {
+				queue[queue_pos].data[i] = data[i];
+			}
+			queue[queue_pos].length = len;
+		} else {
+			queue[queue_pos].length = 0;
+		}
+
 		queue_count++;
 	} else {
 		result = HOSTERR_FULL;
 	}
 	restore_interrupts(isr);
 	return result;
+}
+
+void host_poll(void)
+{
+	// alias original length when this started
+	// shouldn't be able to shrink anywhere but here
+	uint8_t ql = (uint8_t) queue_count;
+
+	for (uint8_t i = 0; i < ql; i++) {
+		uint8_t idx = (queue_tail + i) & CMD_QUEUE_MASK;
+		if (queue[idx].state == CMD_DONE) {
+
+			// determine the endpoint to call back
+			volatile ndev_handler *hndl;
+			if (queue[idx].device == 0xFF) {
+				// special sync handler request, will use that instead
+				hndl = NULL;
+			} else {
+				// call back the associated handler
+				hndl = device_handlers[queue[idx].device];
+			}
+
+			// perform callback
+			if (hndl == NULL) {
+				host_sync_cb(
+						queue[idx].error,
+						queue[idx].id,
+						queue[idx].type,
+						queue[idx].data,
+						queue[idx].length);
+			} else {
+				switch (queue[idx].type) {
+				case TYPE_TALK:
+					if (hndl->talk_func) {
+						hndl->talk_func(
+								queue[idx].device,
+								queue[idx].error,
+								queue[idx].id,
+								queue[idx].command & 0x3,
+								(uint8_t *) queue[idx].data,
+								queue[idx].length);
+					}
+					break;
+				case TYPE_LISTEN:
+					if (hndl->listen_func) {
+						hndl->listen_func(
+								queue[idx].device,
+								queue[idx].error,
+								queue[idx].id,
+								queue[idx].command & 0x3);
+					}
+					break;
+				case TYPE_FLUSH:
+					if (hndl->flush_func) {
+						hndl->flush_func(
+								queue[idx].device,
+								queue[idx].error,
+								queue[idx].id);
+					}
+					break;
+				default:
+					dbg_err("BUG: cmd %d", queue[idx].type);
+				}
+			}
+
+			// shrink queue and reset command holder
+			uint32_t isr = save_and_disable_interrupts();
+			queue[idx].state = CMD_EMPTY;
+			queue_tail++;
+			if (queue_tail >= CMD_QUEUE_SIZE) queue_tail = 0;
+			queue_count--;
+			restore_interrupts(isr);
+		}
+	}
 }

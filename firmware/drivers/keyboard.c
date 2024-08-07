@@ -35,12 +35,12 @@ static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
 	return info->dhid_cur == 0x01 || info->dhid_cur == 0x02;
 }
 
-static void hndl_assign(uint8_t id, volatile ndev_info *info)
+static void hndl_assign(volatile ndev_info *info, uint8_t id)
 {
 	// TODO implement
 }
 
-static void hndl_talk(uint8_t dev, uint16_t cid, uint8_t reg,
+static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
 	if (data_len > 2) {
@@ -50,14 +50,12 @@ static void hndl_talk(uint8_t dev, uint16_t cid, uint8_t reg,
 	}
 }
 
-static void hndl_listen(uint8_t dev, uint16_t cid, uint8_t reg,
-		uint8_t *data, uint8_t *data_len)
+static void hndl_listen(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg)
 {
 	// TODO implement
-	*data_len = 0;
 }
 
-static void hndl_flush(uint8_t dev, uint16_t cid, uint8_t reg)
+static void hndl_flush(uint8_t dev, uint8_t err, uint16_t cid)
 {
 	// TODO implement
 }

@@ -68,6 +68,8 @@ void handler_init(void)
 void handler_poll(void)
 {
 	for (uint8_t i = 0; i < handler_list_count; i++) {
-		handler_list[i].poll_func();
+		if (handler_list[i].poll_func != NULL) {
+			handler_list[i].poll_func();
+		}
 	}
 }

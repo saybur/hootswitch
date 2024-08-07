@@ -19,19 +19,7 @@
 #define __HOST_H__
 
 #include "handler.h"
-
-typedef enum {
-	HOSTERR_OK = 0,
-	HOSTERR_TIMEOUT = 1,
-	HOSTERR_FULL = 2,
-	HOSTERR_SYNC_DISABLED = 3,
-	HOSTERR_ASYNC_DISABLED = 4,
-	HOSTERR_INVALID_PARAM = 5,
-	HOSTERR_LINE_STUCK = 6,
-	HOSTERR_TOO_MANY_DEVICES = 7,
-	HOSTERR_BAD_DEVICE = 8,
-	HOSTERR_NO_DEVICES = 9
-} host_err;
+#include "host_err.h"
 
 typedef enum {
 	COMMAND_FLUSH =    0x1,
@@ -58,37 +46,16 @@ typedef enum {
  * data for Talk 0.
  *
  * @param dev   device number from the register call.
- * @param cmd   ADB command to execute.
+ * @param cmd   ADB command to execute (suggest using bus_command above).
  * @param id    will be assigned an identifier, which will match the callback;
  *              some handlers may not care and can freely ignore this.
+ * @param data  up to 8 bytes of data if a Listen command, ignored otherwise.
+ * @param len   length of data if Listen, ignored otherwise.
  * @return      true if the request could be queued, false otherwise; this is
  *              due to the queue being full or an invalid device.
  */
-host_err host_cmd_async(uint8_t dev, bus_command cmd, uint16_t *id);
-
-/**
- * Executes a synchronous command on the host bus.
- *
- * This version is intended for initialization code and is only safe to call
- * from the handler reset_func, which is otherwise quite annoying to write with
- * callbacks. After host_reset() completes this will always return false.
- *
- * This is more flexible than the async version by allowing commands to
- * Register 3. This is not really meant for end-users but some devices might
- * require it for particular things. Importantly, _do not_ mess with the
- * address of a device without updating the associated `ndev_info` struct
- * (and use extreme caution while doing so).
- *
- * @param dev   device number, or 0xFF to bypass (see below).
- * @param cmd   ADB command to execute (low 4 bits if dev specified, all 8 bits
- *              if dev is 0xFF.
- * @param data  an array of 8 members (minimum!) to load or save data.
- * @param len   length to send if Listen, expected length to receive if Talk
- *              (updated with real length), ignored otherwise.
- * @return      true if a response was received, false if timed out _or_ if
- *              sync commands are not allowed right now.
- */
-host_err host_cmd_sync(uint8_t dev, uint8_t cmd, uint8_t *data, uint8_t *len);
+host_err host_cmd(uint8_t dev, uint8_t cmd, uint16_t *id,
+		uint8_t *data, uint8_t len);
 
 /**
  * Registers a handler with the host. Only handlers registered during reset
@@ -134,5 +101,12 @@ host_err host_readdress(void);
  * function.
  */
 void host_init(void);
+
+/**
+ * Called as part of periodic processing to send data responses to the
+ * handlers. Users should not call this function. It _must_ only be called from
+ * process context.
+ */
+void host_poll(void);
 
 #endif /* __HOST_H__ */
