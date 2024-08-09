@@ -71,6 +71,13 @@
 #define MACHINE_PIO_IRQ0    PIO0_IRQ_0
 #define MACHINE_COUNT       4
 
+// machine DMA units, used to handle initial signal detection and Listen data
+#define MACHINE_DMA_IRQ     DMA_IRQ_1
+#define MACHINE_0_DMA       6
+#define MACHINE_1_DMA       7
+#define MACHINE_2_DMA       8
+#define MACHINE_3_DMA       9
+
 // "host" refers to the connection with the native peripherals on the front
 #define HOST_PIO            pio1
 #define HOST_PIO_IRQ0       PIO1_IRQ_0

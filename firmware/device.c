@@ -19,6 +19,7 @@
 
 #include "pico/stdlib.h"
 #include "pico/rand.h"
+#include "hardware/dma.h"
 #include "hardware/timer.h"
 
 #include "bus.h"
@@ -44,6 +45,24 @@
 
 #define DEVICE_WATCHDOG_TICKS   1000
 
+typedef enum {
+	PHASE_IDLE,
+	PHASE_ATTENTION,
+	PHASE_COMMAND,
+	PHASE_SRQ,
+	PHASE_TLT,
+	PHASE_DATA_OUT,
+	PHASE_DATA_IN
+} bus_phase;
+
+typedef enum {
+	STATUS_FAULT,             // lost track of bus phase
+	STATUS_RESET,             // machine issued reset
+	STATUS_COMMANDED,         // pending command
+	STATUS_DATA_RECV,         // pending data to parse
+	STATUS_NORMAL
+} bus_status;
+
 typedef struct {
 	bool active;              // true if this is the user-selected machine
 	bus_phase phase;
@@ -55,14 +74,19 @@ typedef struct {
 	uint32_t timeout;         // threshold to register a timeout (non-idle)
 	uint8_t command;          // last command received if STATUS_COMMANDED
 	uint8_t message[8];       // message buffer for commands
+	uint8_t message_len;
 } machine;
 
-const uint32_t machine_do_pins[] = {
+uint32_t const machine_do_pins[] = {
 	C1_DO_PIN, C2_DO_PIN, C3_DO_PIN, C4_DO_PIN
 };
-const uint32_t machine_di_pins[] = {
+uint32_t const machine_di_pins[] = {
 	C1_DI_PIN, C2_DI_PIN, C3_DI_PIN, C4_DI_PIN
 };
+uint8_t const dma_channels[] = {
+	MACHINE_0_DMA, MACHINE_1_DMA, MACHINE_2_DMA, MACHINE_3_DMA
+};
+
 const uint8_t randt[] = {
 	0x67, 0xC6, 0x69, 0x73, 0x51, 0xFF, 0x4A, 0xEC,
 	0x29, 0xCD, 0xBA, 0xAB, 0xF2, 0xFB, 0xE3, 0x46,
@@ -115,6 +139,10 @@ void device_init(void)
 	// issue claims for peripherals to avoid accidental conflicts
 	hardware_alarm_claim(MACHINE_TIMER);
 	pio_claim_sm_mask(MACHINE_PIO, sm_mask);
+	dma_channel_claim(MACHINE_0_DMA);
+	dma_channel_claim(MACHINE_1_DMA);
+	dma_channel_claim(MACHINE_2_DMA);
+	dma_channel_claim(MACHINE_3_DMA);
 
 	// try to slow down the edge rates on the bus data drivers
 	gpio_set_slew_rate(C1_DO_PIN, GPIO_SLEW_RATE_SLOW);

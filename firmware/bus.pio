@@ -34,66 +34,9 @@
 ; ----------------------------------------------------------------------------
 
 
-; Writes data bits from the TX FIFO to a bus, including a '1' start bit and the
-; low pulse of the '0' stop bit. This also checks for collisions if configured.
-; This is used when acting as an emulated device, only in response to Talk
-; Register from one of the machines. See the next entry for the version used
-; when operating as a host.
-;
-; The TX FIFO must have something in it when this is started to avoid stalling
-; at an inopportune location. When the FIFO depletes the stop bit will be sent
-; and an interrupt will be raised on the IRQ bit matching the state machine.
-; The FIFO is joined so has enough space for 8 bytes of data, which is the most
-; the protocol allows anyway.
-;
-; Collision detection works by checking the state of a given pin during a '1'
-; data bit. If it is detected low someone else is sending a '0' simultaneously;
-; this will halt and raise both the above IRQ and IRQ+4. This feature can be
-; disabled by providing an input pin that is always high.
-
-.program bus_tx_dev
-.side_set 1
-
-	nop             side 1 [6]  ; '1' bit low, 35us
-	nop             side 0 [12] ; '1' bit high, 65us
-
-tx_bs:
-	out x, 1        side 1 [5]  ; low 30us, fetch bit value
-	jmp !x tx_0     side 1      ; low +5us, decide if should be released
-	nop             side 0 [1]  ; release now, 10us high
-	jmp pin tx_be   side 0 [3]  ; check for collision, +20us high
-	irq 4 rel       side 0      ; if pin still low, set flag for collision
-tx_end:
-	irq wait 0 rel  side 0      ; idle pin, stop, let CPU know xmit is done
-tx_0:
-	nop             side 1 [5]  ; low +30us
-
-tx_be:
-	jmp !osre tx_bs side 0 [6]  ; +35us high, loop if more data
-
-	jmp tx_end      side 1 [12] ; assert stop bit for 65us then goto end
-
-% c-sdk {
-static inline void bus_tx_dev_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
-{
-	*c = bus_tx_dev_program_get_default_config(offset);
-	sm_config_set_sideset_pins(c, pin_write);
-	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
-	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
-	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
-}
-
-static inline void bus_tx_dev_put(PIO pio, uint8_t sm, uint8_t v)
-{
-	// left justify data (MSB first) via narrow bus writes
-	// a bit cryptic, but see datasheet 3.6.1 for details
-	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
-	*txf = v;
-}
-%}
-
+; ----------------------------------------------------------------------------
+; ------------ Host Implementation -------------------------------------------
+; ----------------------------------------------------------------------------
 
 ; Writes command or data bits from the TX FIFO to the bus, including the
 ; preable/postable. This version is used when acting as a host. It is similar
@@ -169,98 +112,6 @@ static inline void bus_tx_host_put(PIO pio, uint8_t sm, uint8_t v)
 }
 %}
 
-
-; Reads bits from a connected machine to the RX FIFO. Should be started while
-; the line is high on the sync signal or Tlt of the relevant transaction.
-;
-; Unlike the following reading method this one relies on hosts having no more
-; than +/- 3% timing deviation, which makes processing much simpler.
-;
-; The decision to issue a SRQ depends on knowledge of state beyond what PIO
-; is (probably) capable of, so as soon as the stop bit assertion begins this
-; does the following:
-;
-; 1) A non-wait IRQ is triggered to get the CPU's attention.
-; 2) This waits for about 50us, then pulls from the TX FIFO.
-; 3) If a value is in the TX FIFO this will drive the output line low for the
-;    time requested (value * 3us, 78 is a reasonable value) then re-issue the
-;    IRQ and wait.
-; 4) If no value is in the TX FIFO the pull will instead block, not touching
-;    the output line.
-;
-; This version is used both during the command phase and Listen Register data
-; operations. The normal offset will discard the '1' start bit. Starting at
-; (offset + 2) should be used during commands.
-
-.program bus_rx_dev
-.side_set 1
-
-	wait 0 pin 0    side 0      ; discard '1' start bit if needed
-	wait 1 pin 0    side 0
-
-	out x, 8        side 0      ; load the counter for how many bits to read
-rx_b:
-	wait 0 pin 0    side 0 [14] ; wait for line to go low, then ~50us to center
-	in pins, 1      side 0      ; fetch line state
-	wait 1 pin 0    side 0      ; wait for line to go high (might be already)
-	jmp x-- rx_b    side 0 [1]  ; loop if expecting more data
-
-	wait 0 pin 0    side 0      ; wait until the stop bit begins
-	irq 0 rel       side 0 [15] ; notify CPU we are at stop bit & wait ~50us
-	out x, 8        side 0      ; load SRQ duration, or stall if not provided
-rx_s:
-	jmp x-- rx_s    side 1      ; drive SRQ
-	irq wait 0 rel  side 0      ; release and re-notify
-.wrap
-
-% c-sdk {
-static inline void bus_rx_dev_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
-{
-	*c = bus_rx_dev_program_get_default_config(offset);
-	sm_config_set_in_pins(c, pin_read);
-	sm_config_set_sideset_pins(c, pin_write);
-	sm_config_set_in_shift(c, false, true, 8); // shift left
-	sm_config_set_out_shift(c, true, true, 8); // shift right
-	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
-}
-%}
-
-
-; Listens to the bus for attention/reset, interrupting the CPU when a signal of
-; interest is detected. This provides a CPU-free way to both seek that specific
-; (long) signal and ignore transactions we don't care about, like machine/non-
-; owned device chatter.
-
-.program bus_atn_dev
-
-	out y, 16                   ; pull in the countdown value
-atn_no:
-	wait 0 pin 0                ; wait for the line to drive low
-	mov x, y                    ; reset countdown
-atn_cnt:
-	jmp pin atn_no              ; if pin goes high before expire, try again
-	jmp x-- atn_cnt             ; tick down
-
-atn_yes:
-	jmp pin atn_done            ; made it past minimum, wait to go high
-	jmp x-- atn_yes             ; until we do, countdown with overflowed X
-atn_done:
-	in x, 16                    ; store and be done
-	irq wait 0 rel
-
-% c-sdk {
-static inline void bus_atn_dev_pio_config(pio_sm_config *c,
-		uint32_t offset, uint32_t pin_read)
-{
-	*c = bus_atn_dev_program_get_default_config(offset);
-	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_out_shift(c, true, true, 16); // shift right
-	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
-}
-%}
-
-
 ; Reads bits from a device's response into the RX FIFO. This is used by the
 ; host implementation while listening to Talk Register issued by a native
 ; device.
@@ -325,5 +176,207 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 	sm_config_set_in_shift(c, false, true, 16); // shift left
 	sm_config_set_out_shift(c, true, true, 8); // shift right
 	sm_config_set_clkdiv_int_frac(c, 50, 0); // 0.4us/clk
+}
+%}
+
+
+; ----------------------------------------------------------------------------
+; ------------ Device Implementation -----------------------------------------
+; ----------------------------------------------------------------------------
+
+; Device state machines operate in parallel, so the cheat above with loading
+; and unloading PIO programs does not work here. On the plus side, the entire
+; PIO unit is used for the devices, so up to 4 devices can operate and use all
+; 32 instructions. The downside is 32 instructions isn't enough to operate ADB
+; entirely in PIO, so the CPU has to be interrupted more often than in a
+; 'perfect' implementation. PRs to improve anything here would be appreciated.
+
+
+; Writes data bits from the TX FIFO to a bus, including a '1' start bit and the
+; low pulse of the '0' stop bit. This also checks for collisions. This is used
+; when acting as an emulated device in response to Talk Register.
+;
+; The TX FIFO must have something in it when this is started to avoid stalling
+; at an inopportune location. When the FIFO depletes the stop bit will be sent
+; and an interrupt will be raised on the IRQ bit matching the state machine.
+; The FIFO is joined so has enough space for 8 bytes of data, which is the most
+; the protocol allows anyway.
+;
+; Collision detection works by checking the state of a given pin during a '1'
+; data bit. If it is detected low someone else is sending a '0' simultaneously;
+; this will halt and raise both the above IRQ and IRQ+4. This feature can be
+; disabled by providing an input pin that is always high, though for devices
+; it is a good idea to always use it (native devices appear to always perform
+; collision checking).
+
+.program bus_tx_dev
+.side_set 1
+
+	nop             side 1 [6]  ; '1' bit low, 35us
+	nop             side 0 [12] ; '1' bit high, 65us
+
+tx_bs:
+	out x, 1        side 1 [5]  ; low 30us, fetch bit value
+	jmp !x tx_0     side 1      ; low +5us, decide if should be released
+	nop             side 0 [1]  ; release now, 10us high (line settle)
+	jmp pin tx_be   side 0 [3]  ; check for collision now, +20us high
+	irq 4 rel       side 0      ; if pin still low, set flag for collision
+tx_end:
+	irq wait 0 rel  side 0      ; idle pin, stop, let CPU know xmit is done
+tx_0:
+	nop             side 1 [5]  ; low +30us
+
+tx_be:
+	jmp !osre tx_bs side 0 [6]  ; +35us high, loop if more data
+
+	jmp tx_end      side 1 [12] ; assert stop bit for 65us then goto end
+
+% c-sdk {
+static inline void bus_tx_dev_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
+{
+	*c = bus_tx_dev_program_get_default_config(offset);
+	sm_config_set_sideset_pins(c, pin_write);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
+	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
+	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+}
+
+static inline void bus_tx_dev_put(PIO pio, uint8_t sm, uint8_t v)
+{
+	// left justify data (MSB first) via narrow bus writes
+	// a bit cryptic, but see datasheet 3.6.1 for details
+	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
+	*txf = v;
+}
+%}
+
+
+; Reads bits from a connected machine to the RX FIFO. Should be started while
+; the line is high on the sync signal or Tlt of the relevant transaction. After
+; the (optional) start bit this will cleanly time out if the line is idle for
+; more than about 75us.
+;
+; This is vulnerable to the start bit not appearing on Listen Register or the
+; line sticking low at any time: you will need a fallback timer to avoid a hard
+; stall in these cases.
+;
+; This program is used both during the command phase and Listen Register data
+; operations. The normal offset will discard the '1' start bit. Starting at
+; (offset + 2) should be used during commands.
+;
+; This needs a maximum bytes to read count provided before starting, which is
+; used to set the SRQ in the correct bit frame. If doing a Listen Register read
+; this value can be set to an arbitrarily high value, the state machine will
+; time out without risk of a SRQ that way.
+;
+; Unlike the host reading method this one relies on the remote machine having
+; no more than +/- 3% timing deviation, which makes processing much simpler.
+;
+; The decision to issue a SRQ depends on knowledge of state beyond what PIO
+; is capable of, so as soon as the stop bit assertion begins this does the
+; following:
+;
+; 1) IRQ is triggered to get the CPU's attention.
+; 2) If the CPU wants to issue a SRQ, it simply clears the IRQ flag. The SRQ
+;    will be issued, and the interrupt raised again.
+; 3) If the CPU does not want a SRQ it stops the state machine without clearing
+;    the flag.
+
+.program bus_rx_dev
+.side_set 1
+
+	wait 0 pin 0    side 0      ; discard '1' start bit if needed
+	wait 1 pin 0    side 0
+
+	out x, 8        side 0      ; load the counter for max bits to read
+rx_wh:                          ; "rx, while high"
+	jmp pin rx_whc  side 0      ; while line high countdown at jump target
+	set y, 24       side 0 [14] ; low: ~48-54us to center (reload during wait)
+	in pins, 1      side 0      ;      and then fetch line state
+	wait 1 pin 0    side 0      ; wait for line to go high (might be already)
+	jmp x-- rx_wh   side 0 [1]  ; loop if expecting more data
+	wait 0 pin 0    side 0      ; wait for stop bit low to start
+.wrap_target
+	irq wait 0 rel  side 0      ; notify CPU we are at stop bit
+rx_srq:
+	jmp y-- rx_srq  side 1  [3] ; assert SRQ using leftover Y countdown
+.wrap
+
+rx_whc:                         ; "rx while high count"
+	jmp y-- rx_wh   side 0      ; if not timed out, check line again
+	irq wait 0 rel  side 0      ; timed out
+
+% c-sdk {
+static inline void bus_rx_dev_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
+{
+	*c = bus_rx_dev_program_get_default_config(offset);
+	sm_config_set_in_pins(c, pin_read);
+	sm_config_set_sideset_pins(c, pin_write);
+	sm_config_set_in_shift(c, false, true, 8); // shift left
+	sm_config_set_out_shift(c, true, true, 8); // shift right
+	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
+}
+
+static inline void bus_rx_dev_get(PIO pio, uint8_t sm,
+		volatile uint8_t *data, uint8_t *data_len)
+{
+	uint8_t cnt = 0;
+	io_rw_8 *rxf = (io_rw_8 *) &(pio->txf[sm]);
+	while (! (pio->fstat & (1U << (PIO_FSTAT_RXEMPTY_LSB + sm)))) {
+		*data++ = *rxf;
+		cnt++;
+	}
+	*data_len = cnt;
+}
+%}
+
+
+; Listens to the bus for attention/reset, interrupting the CPU when a signal of
+; interest is detected. This provides a CPU-free way to seek that specific
+; (long) signal, ignore transactions we don't care about, like machine/non-
+; owned device chatter, and report back attention versus reset pulses.
+;
+; Because of the tight instruction count in the device PIO unit this does not
+; directly interrupt the CPU. Instead, it pushes a value out the FIFO and then
+; immediately wraps to get another value, stalling with no data available.
+; There needs to be a DMA channel set up to take the RX FIFO value, write to an
+; appropriate location, and interrupt the CPU. If an instruction somewhere can
+; be freed this would be easier with a simple "irq wait 0 rel".
+;
+; In the case that the line is forced low and kept there, this will fire after
+; the line goes high _or_ 80 minutes has past. There isn't a way to detect the
+; difference in the latter case between a min-time reset or the hard low line,
+; so this will need some kind of policing timer to detect a stuck signal.
+
+.program bus_atn_dev
+
+.wrap_target
+	out y, 32                   ; pull in the countdown value
+atn_no:
+	wait 0 pin 0                ; wait for the line to drive low
+	mov x, y                    ; reset countdown
+atn_cnt:
+	jmp pin atn_no              ; if pin goes high before expire, try again
+	jmp x-- atn_cnt             ; tick down
+
+atn_yes:
+	jmp pin atn_done            ; made it past minimum, wait to go high
+	jmp x-- atn_yes             ; until we do, countdown with overflowed X
+atn_done:
+	in x, 32                    ; store, wrap, and stall
+.wrap
+
+% c-sdk {
+static inline void bus_atn_dev_pio_config(pio_sm_config *c,
+		uint32_t offset, uint32_t pin_read)
+{
+	*c = bus_atn_dev_program_get_default_config(offset);
+	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_out_shift(c, true, true, 32); // shift right
+	sm_config_set_in_shift(c, true, true, 32); // shift right
+	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
 }
 %}
