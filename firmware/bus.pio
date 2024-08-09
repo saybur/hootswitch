@@ -320,11 +320,18 @@ static inline void bus_rx_dev_pio_config(pio_sm_config *c,
 	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
 }
 
-static inline void bus_rx_dev_get(PIO pio, uint8_t sm,
+static inline uint8_t bus_rx_dev_get(PIO pio, uint8_t sm)
+{
+	io_rw_8 *rxf = (io_rw_8 *) &(pio->rxf[sm]);
+	uint8_t v = *rxf;
+	return v;
+}
+
+static inline void bus_rx_dev_getm(PIO pio, uint8_t sm,
 		volatile uint8_t *data, uint8_t *data_len)
 {
 	uint8_t cnt = 0;
-	io_rw_8 *rxf = (io_rw_8 *) &(pio->txf[sm]);
+	io_rw_8 *rxf = (io_rw_8 *) &(pio->rxf[sm]);
 	while (! (pio->fstat & (1U << (PIO_FSTAT_RXEMPTY_LSB + sm)))) {
 		*data++ = *rxf;
 		cnt++;
