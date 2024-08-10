@@ -331,18 +331,6 @@ static inline uint8_t bus_rx_dev_get(PIO pio, uint8_t sm)
 	uint8_t v = *rxf;
 	return v;
 }
-
-static inline void bus_rx_dev_getm(PIO pio, uint8_t sm,
-		volatile uint8_t *data, uint8_t *data_len)
-{
-	uint8_t cnt = 0;
-	io_rw_8 *rxf = (io_rw_8 *) &(pio->rxf[sm]);
-	while (! (pio->fstat & (1U << (PIO_FSTAT_RXEMPTY_LSB + sm)))) {
-		*data++ = *rxf;
-		cnt++;
-	}
-	*data_len = cnt;
-}
 %}
 
 

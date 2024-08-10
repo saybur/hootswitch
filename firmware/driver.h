@@ -37,8 +37,7 @@
  *
  * - void reset_func(uint8_t mach, uint8_t dev)
  * - void switch_func(uint8_t mach)
- * - void talk_func(uint8_t mach, uint8_t dev, uint8_t reg,
- *                 uint8_t *data, uint8_t *data_len)
+ * - void talk_func(uint8_t mach, uint8_t dev, uint8_t reg)
  * - void listen_func(uint8_t mach, uint8_t dev, uint8_t reg,
  *                 uint8_t *data, uint8_t data_len)
  * - void flush_func(uint8_t mach, uint8_t dev)
@@ -56,67 +55,45 @@
  *   ignore this.
  * - `reg` is a register value, 1:1 to the ADB register, from 0-2 (register 3
  *   is handled for you).
- * - `data` is an array, generally 8 bytes long, to either write data into or
- *   out of.
- * - `data_len` defines the number of values in the above array, either
- *   supplied or requested.
  * - `handle` is the ADB device handler ID (DHI) value. After reset you should
  *   use your driver's default. If you don't support a given handle you should
  *   ignore requests to change it.
  *
  * Notes for each:
  *
- * - (-) reset_func is called in response to a reset pulse. Reset state (and
- *   DHI) to defaults.
- * - (-) switch_func is called to indicate the active machine the user has
- *   picked is being switched to the one provided.
- * - (!) talk_func is called in response to a Talk command, used when the
- *   machine wants get data from the driver. Return relevant data for that
- *   register, or zero data length if no response is needed.
- * - (!) listen_func is called in response to a Listen command, used when the
- *   machine wants to set data for a register.
- * - (!) flush_func is called in response to a Flush command.
- * - (!) srq_func is called to determine if the driver has data it wants to
- *   return in Register 0 for a given device. The implementation will
- *   automatically figure out if a SRQ is warranted based on a check of this
- *   value, so just return true/false based on whether there is new data.
- * - (!) get_handle_func should return the currently assigned DHI. This can
+ * - `reset_func` is called in response to a reset pulse. Reset state (and DHI)
+ *   to defaults.
+ * - `switch_func` is called to indicate the active machine the user has picked
+ *   is being switched to the one provided.
+ * - `talk_func` is called after a Talk command has completed, letting the
+ *   driver know that the last-submitted Talk data was sent to the computer.
+ *   The driver may set new data in response to this call.
+ * - `listen_func` is called in response to a Listen command, offering up to 8
+ *   bytes of data to be stored in the driver.
+ * - `flush_func` is called in response to a Flush command.
+ * - `get_handle_func` should return the currently assigned DHI. This can
  *   be either the default _or_ a DHI from set_handle_func that was actually
  *   accepted.
- * - (!) set_handle_func offers a new DHI to assign. If the handle is supported
+ * - `set_handle_func` offers a new DHI to assign. If the handle is supported
  *   it should be assigned internally and then returned each time from
  *   get_handle_func, otherwise leave the old handle alone.
- * - (-) poll_func is called periodically to give time for your driver to do
+ * - `poll_func` is called periodically to give time for your driver to do
  *   whatever it wants. This is cooperative, do not perform excessive
  *   processing here if you can avoid it. If you _really_ need processing time
  *   core1 is available for your use, but it will be your responsibility to
  *   figure out the various challenges associated with multicore usage on the
  *   Pico! :)
  *
- * The functions with (!) above are invoked from the interrupt context. As a
- * result it is important they return _quickly_ and work with variables set to
- * be `volatile` in your code. The following have particularly sensitive
- * timings:
- *
- * - talk_func and get_handle_func are called during ADB Tlt and usually have
- *   less than ~60us to generate results.
- * - srq_func is called during the command stop bit and must share time with
- *   all device drivers; it is _highly_ recommended to store this in a variable
- *   that can be instantly returned.
- *
- * The functions with (-) are invoked from the process context. You may still
- * (generally) receive interrupt commands while these are executing.
- *
  * There is only one "active" machine at any time, the others are inactive. It
  * is up to the driver to decide how to handle active vs inactive machines. For
- * example, a mouse driver will probably want to only return data to an active
- * machine. However, a virtual modem might want to return data to all machines
+ * example, a mouse driver will probably want to only send data to an active
+ * machine. However, a virtual modem might want to send data to all machines
  * and maintain state separately for each one, effectively acting like multiple
- * independent devices. `talk_inactive` and `srq_inactive` help guide how a
- * driver should be called: the first controls if Talk 0 instructions should be
- * passed through from inactive machines (if false these are suppressed and the
- * driver is not notified of them), the second controls if SRQs should be
- * checked from the driver for inactive machines.
+ * independent devices.
+ *
+ * Sending data is accomplished by calling `device_offer`. Once this data is
+ * successfully sent `talk_func` is called back. See `device_offer` for more
+ * details.
  *
  * ADB initializes at startup and the device table is not updated again (unless
  * something exceptional happens, like ADBReinit). To accomodate this the
@@ -131,11 +108,9 @@
  */
 
 typedef struct {
-	bool talk_inactive;  // if true, pass Talk 0 requests inactive machines
-	bool srq_inactive;
 	void (*reset_func)(uint8_t, uint8_t);
 	void (*switch_func)(uint8_t);
-	void (*talk_func)(uint8_t, uint8_t, uint8_t, uint8_t*, uint8_t*);
+	void (*talk_func)(uint8_t, uint8_t, uint8_t);
 	void (*listen_func)(uint8_t, uint8_t, uint8_t, uint8_t*, uint8_t);
 	void (*flush_func)(uint8_t, uint8_t);
 	bool (*srq_func)(uint8_t);

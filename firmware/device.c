@@ -76,20 +76,17 @@ typedef struct {
 	bool active;              // true if this is the user-selected machine
 
 	bus_phase phase;
-
 	mach_status status;
-
 	mach_driver drivers[DRIVER_MAXIMUM];
 	uint8_t driver_count;
-
 	uint16_t srq;             // queued service requests
-
 	uint64_t time;            // multiple use, generally when the phase started
 	uint32_t timeout;         // threshold to register a timeout (non-idle)
+	bool collision;           // last-received
 
 	uint8_t command;          // last command received if STATUS_COMMANDED
+	uint8_t driver;
 	cmd_type command_type;
-
 	uint8_t message[8];       // message buffer for commands
 	uint8_t message_len;
 } machine;
@@ -125,8 +122,11 @@ static uint8_t rand_idx;
 
 /*
  * ----------------------------------------------------------------------------
- *   PIO Routines
+ *   PIO / GPIO Setup Routines
  * ----------------------------------------------------------------------------
+ *
+ * All of these that start something also set .time to help track if a
+ * condition has stalled beyond allowed levels and/or met certain durations.
  */
 
 /*
@@ -141,6 +141,7 @@ static void dev_pio_atn_start(uint8_t i)
 	pio_sm_init(DEVICE_PIO, i, off_pio_atn, &pc);
 	pio_sm_put(DEVICE_PIO, i, PIO_ATN_MIN);
 	pio_sm_set_enabled(DEVICE_PIO, i, true);
+	machines[i].time = time_us_64();
 }
 
 /*
@@ -153,6 +154,7 @@ static void dev_pio_command_start(uint8_t i)
 	pio_sm_init(DEVICE_PIO, i, off_pio_rx + PIO_CMD_OFFSET, &pc);
 	pio_sm_put(DEVICE_PIO, i, 8);
 	pio_sm_set_enabled(DEVICE_PIO, i, true);
+	machines[i].time = time_us_64();
 }
 
 /*
@@ -166,6 +168,7 @@ static void dev_pio_tx_start(uint8_t i)
 	bus_atn_dev_pio_config(&pc, off_pio_tx, machine_di_pins[i]);
 	pio_sm_init(DEVICE_PIO, i, off_pio_tx, &pc);
 	pio_sm_set_enabled(DEVICE_PIO, i, true);
+	machines[i].time = time_us_64();
 }
 
 /*
@@ -190,6 +193,7 @@ static void dev_pio_rx_start(uint8_t i, volatile uint8_t *dest)
 			true); // start
 
 	pio_sm_set_enabled(DEVICE_PIO, i, true);
+	machines[i].time = time_us_64();
 }
 
 /*
@@ -204,21 +208,16 @@ static void dev_pio_stop(uint8_t i)
 }
 
 /*
- * ----------------------------------------------------------------------------
- *   General ISR Support Routines
- * ----------------------------------------------------------------------------
- */
-
-/*
  * Activates the rising-edge interrupt for a device port. If this returns false
  * it indicates the relevant GPIO is already high and the ISR was not
  * scheduled, typical for a slow ISR response and/or short signal of interest.
  * If true the caller should delegate to the GPIO ISR.
  */
-static bool setup_gpio_isr(uint8_t id)
+static bool setup_gpio_isr(uint8_t i)
 {
 	// if waiting for Tlt then we need to know when it starts
-	uint32_t const pin = machine_di_pins[id];
+	machines[i].time = time_us_64();
+	uint32_t const pin = machine_di_pins[i];
 	if (gpio_get(pin)) {
 		return false;
 	} else {
@@ -237,6 +236,12 @@ static bool setup_gpio_isr(uint8_t id)
 }
 
 /*
+ * ----------------------------------------------------------------------------
+ *   Interrupt Routines & Support
+ * ----------------------------------------------------------------------------
+ */
+
+/*
  * Processes the command byte, updates internal state with the results, and
  * indicates whether this needs to issue a SRQ.
  *
@@ -245,7 +250,7 @@ static bool setup_gpio_isr(uint8_t id)
  */
 static bool isr_command_process(uint8_t i, bool *srq)
 {
-// TODO protect against empty FIFO
+	if (pio_sm_is_rx_fifo_empty(DEVICE_PIO, i)) return false;
 	uint8_t cmd = bus_rx_dev_get(DEVICE_PIO, i);
 	cmd_type ctype = util_parse_cmd_type(cmd);
 
@@ -263,46 +268,13 @@ static bool isr_command_process(uint8_t i, bool *srq)
 		machines[i].command = 0; // to let future handler skip us
 		if (ctype == TYPE_TALK && cmd & 0x3 == 0) {
 			// Talk 0, if we have any pending SRQ issue it
-			if (machines[i].srq) {
-				machines[i].phase = PHASE_SRQ;
-// TODO actually issue
-			}
+			*srq = machines[i].srq;
 		}
-		return true;
 	}
 
-	// determine next step
-	bus_phase next_phase;
-	if (ctype == TYPE_TALK) {
-
-		// check if SRQ is needed
-		next_phase = PHASE_TLT;
-		if (cmd & 0x3 == 0) {
-			// Talk 0, so SRQ may be needed
-			uint16_t srq = machines[i].srq;
-			srq &= ~(1U << cmd & (0xF0));
-			if (srq) {
-				// release IRQ line to allow PIO to fire SRQ
-				pio_interrupt_clear(HOST_PIO, i);
-				next_phase = PHASE_SRQ;
-			}
-		}
-
-// TODO figure out data
-
-	} else if (ctype == TYPE_LISTEN) {
-// Needs a copy of the GPIO interrupt code below
-	} else if (ctype == TYPE_FLUSH) {
-// TODO log Flush
-		// done at this point
-		machines[i].phase = PHASE_IDLE;
-		dev_pio_atn_start(i);
-	} else {
-// TODO error
-	}
-
-
-// TODO rewrite to contract
+	machines[i].command = cmd;
+	machines[i].command_type = ctype;
+	machines[i].driver = d;
 	return true;
 }
 
@@ -330,6 +302,26 @@ static bus_phase isr_command_execute(uint8_t i)
 
 // TODO remove
 	return PHASE_IDLE;
+}
+
+static void isr_talk_complete(uint8_t i)
+{
+	// collision?
+	if (DEVICE_PIO->irq & (1U << (i + 4))) {
+		machines[i].collision = true;
+		pio_interrupt_clear(HOST_PIO, i + 4);
+	} else {
+		machines[i].collision = false;
+	}
+
+
+// TODO complete
+
+}
+
+static void isr_listen_complete(uint8_t i)
+{
+	// TODO complete
 }
 
 /*
@@ -371,7 +363,9 @@ static void device_gpio_isr(void)
 			break;
 
 		default:
-// TODO remaining options are all errors
+			// probably a coding error, TODO report it
+			dev_pio_atn_start(i);
+			machines[i].phase = PHASE_IDLE;
 		}
 	}
 }
@@ -402,7 +396,6 @@ static void device_pio_isr(void)
 			dev_pio_stop(i);
 			// attention signal present; is it over yet?
 			if (setup_gpio_isr(i)) {
-				machines[i].time = time_us_64();
 				machines[i].phase = PHASE_ATTENTION;
 			} else {
 				// too late, already high; assume short enough for reg atn
@@ -417,6 +410,7 @@ static void device_pio_isr(void)
 				// abort completely
 				dev_pio_stop(i);
 				dev_pio_atn_start(i);
+				machines[i].phase = PHASE_IDLE;
 			}
 			if (srq) {
 				// will return into PHASE_SRQ to resolve
@@ -445,19 +439,26 @@ static void device_pio_isr(void)
 			break;
 		case PHASE_TALK:
 			dev_pio_stop(i);
-// TODO implement
+			isr_talk_complete(i);
 			break;
 		case PHASE_LISTEN:
 			dev_pio_stop(i);
-// TODO implement
+			isr_listen_complete(i);
 			break;
 		default:
-			// probably a coding error
+			// probably a coding error, TODO report it
 			dev_pio_stop(i);
 			dev_pio_atn_start(i);
+			machines[i].phase = PHASE_IDLE;
 		}
 	}
 }
+
+/*
+ * ----------------------------------------------------------------------------
+ *   Reset & Init Logic
+ * ----------------------------------------------------------------------------
+ */
 
 void device_init(void)
 {
