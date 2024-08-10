@@ -192,15 +192,16 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 ; 'perfect' implementation. PRs to improve anything here would be appreciated.
 
 
-; Writes data bits from the TX FIFO to a bus, including a '1' start bit and the
-; low pulse of the '0' stop bit. This also checks for collisions. This is used
-; when acting as an emulated device in response to Talk Register.
+; Writes data bits from the TX FIFO to a bus, including the 140us Tlt wait, a
+; '1' start bit, and the low pulse of the '0' stop bit. This also checks for
+; collisions. Used when acting as an emulated device in response to Talk
+; Register.
 ;
-; The TX FIFO must have something in it when this is started to avoid stalling
+; The TX FIFO should have something in it before Tlt expires to avoid stalling
 ; at an inopportune location. When the FIFO depletes the stop bit will be sent
 ; and an interrupt will be raised on the IRQ bit matching the state machine.
-; The FIFO is joined so has enough space for 8 bytes of data, which is the most
-; the protocol allows anyway.
+; The FIFO is joined so it has enough space for 8 bytes of data, which is the
+; most the protocol allows anyway.
 ;
 ; Collision detection works by checking the state of a given pin during a '1'
 ; data bit. If it is detected low someone else is sending a '0' simultaneously;
@@ -211,6 +212,10 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 
 .program bus_tx_dev
 .side_set 1
+
+	set x, 26       side 0      ; delay 140us (Tlt)
+tx_wt:
+	jmp x-- tx_wt   side 0
 
 	nop             side 1 [6]  ; '1' bit low, 35us
 	nop             side 0 [12] ; '1' bit high, 65us
@@ -342,16 +347,9 @@ static inline void bus_rx_dev_getm(PIO pio, uint8_t sm,
 
 
 ; Listens to the bus for attention/reset, interrupting the CPU when a signal of
-; interest is detected. This provides a CPU-free way to seek that specific
-; (long) signal, ignore transactions we don't care about, like machine/non-
-; owned device chatter, and report back attention versus reset pulses.
-;
-; Because of the tight instruction count in the device PIO unit this does not
-; directly interrupt the CPU. Instead, it pushes a value out the FIFO and then
-; immediately wraps to get another value, stalling with no data available.
-; There needs to be a DMA channel set up to take the RX FIFO value, write to an
-; appropriate location, and interrupt the CPU. If an instruction somewhere can
-; be freed this would be easier with a simple "irq wait 0 rel".
+; interest is detected. This provides a CPU-light way to seek that specific
+; (long) signal while ignoring transactions we don't care about, primarily
+; machine/non-owned device chatter.
 ;
 ; In the case that the line is forced low and kept there, this will fire after
 ; the line goes high _or_ 80 minutes has past. There isn't a way to detect the
@@ -360,7 +358,6 @@ static inline void bus_rx_dev_getm(PIO pio, uint8_t sm,
 
 .program bus_atn_dev
 
-.wrap_target
 	out y, 32                   ; pull in the countdown value
 atn_no:
 	wait 0 pin 0                ; wait for the line to drive low
@@ -368,13 +365,7 @@ atn_no:
 atn_cnt:
 	jmp pin atn_no              ; if pin goes high before expire, try again
 	jmp x-- atn_cnt             ; tick down
-
-atn_yes:
-	jmp pin atn_done            ; made it past minimum, wait to go high
-	jmp x-- atn_yes             ; until we do, countdown with overflowed X
-atn_done:
-	in x, 32                    ; store, wrap, and stall
-.wrap
+	irq wait 0 rel              ; threshold met, let CPU know attention present
 
 % c-sdk {
 static inline void bus_atn_dev_pio_config(pio_sm_config *c,
@@ -383,7 +374,6 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 	*c = bus_atn_dev_program_get_default_config(offset);
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_out_shift(c, true, true, 32); // shift right
-	sm_config_set_in_shift(c, true, true, 32); // shift right
 	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
 }
 %}

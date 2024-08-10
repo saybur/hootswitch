@@ -170,6 +170,7 @@ static inline void host_stop_pio(void)
 {
 	pio_sm_set_enabled(HOST_PIO, pio_sm, false);
 	pio_interrupt_clear(HOST_PIO, pio_sm);
+// TODO following is expensive?
 	pio_sm_set_pins_with_mask(HOST_PIO, 0, 0, A_DO_PIN_bm);
 }
 

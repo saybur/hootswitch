@@ -45,26 +45,27 @@
  */
 
 #define DEVICE_WATCHDOG_TICKS   1000
+#define TIME_TLT                140
 #define PIO_CMD_OFFSET          2
 #define PIO_ATN_MIN             775
-#define PIO_ATN_RESET_THRESH    4294966421UL
+#define TIME_RESET_THRESH       400
+#define RX_MAX_BITS             64
 
 typedef enum {
 	PHASE_IDLE,
+	PHASE_ATTENTION,
 	PHASE_COMMAND,
 	PHASE_SRQ,
 	PHASE_TLT,
-
-	PHASE_DATA_IN
+	PHASE_LISTEN,
+	PHASE_TALK
 } bus_phase;
 
 typedef enum {
-	STATUS_FAULT,             // lost track of bus phase
+	STATUS_OFF,               // not yet reset by remote device
 	STATUS_RESET,             // machine issued reset
-	STATUS_COMMANDED,         // pending command
-	STATUS_DATA_RECV,         // pending data to parse
 	STATUS_NORMAL
-} bus_status;
+} mach_status;
 
 typedef struct {
 	uint8_t address;
@@ -76,12 +77,11 @@ typedef struct {
 
 	bus_phase phase;
 
-	bus_status status;
+	mach_status status;
 
 	mach_driver drivers[DRIVER_MAXIMUM];
 	uint8_t driver_count;
 
-	uint32_t attention;       // duration value of last attention signal
 	uint16_t srq;             // queued service requests
 
 	uint64_t time;            // multiple use, generally when the phase started
@@ -100,12 +100,12 @@ uint32_t const machine_do_pins[] = {
 uint32_t const machine_di_pins[] = {
 	C1_DI_PIN, C2_DI_PIN, C3_DI_PIN, C4_DI_PIN
 };
+uint32_t const machine_di_irqm[] = {
+	(C1_DI_PIN % 8) << 2, (C2_DI_PIN % 8) << 2,
+	(C3_DI_PIN % 8) << 2, (C4_DI_PIN % 8) << 2
+};
 uint8_t const dma_channels[] = {
 	DEVICE_0_DMA, DEVICE_1_DMA, DEVICE_2_DMA, DEVICE_3_DMA
-};
-uint32_t const dma_ints_mask[] = {
-	1U << DEVICE_0_DMA, 1U << DEVICE_1_DMA,
-	1U << DEVICE_2_DMA, 1U << DEVICE_3_DMA
 };
 
 const uint8_t randt[] = {
@@ -123,68 +123,271 @@ static volatile machine machines[DEVICE_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
 static uint8_t rand_idx;
 
-static void enable_pio_atn(uint8_t i)
+/*
+ * ----------------------------------------------------------------------------
+ *   PIO Routines
+ * ----------------------------------------------------------------------------
+ */
+
+/*
+ * Configures and activates the PIO SM for the given device in attention-seek
+ * mode. This will cause a PIO interrupt once a long (~770us or so) pulse is
+ * detected.
+ */
+static void dev_pio_atn_start(uint8_t i)
 {
 	pio_sm_config pc;
 	bus_atn_dev_pio_config(&pc, off_pio_atn, machine_di_pins[i]);
 	pio_sm_init(DEVICE_PIO, i, off_pio_atn, &pc);
 	pio_sm_put(DEVICE_PIO, i, PIO_ATN_MIN);
 	pio_sm_set_enabled(DEVICE_PIO, i, true);
+}
+
+/*
+ * Starts the given PIO SM in command-listen mode.
+ */
+static void dev_pio_command_start(uint8_t i)
+{
+	pio_sm_config pc;
+	bus_atn_dev_pio_config(&pc, off_pio_rx, machine_di_pins[i]);
+	pio_sm_init(DEVICE_PIO, i, off_pio_rx + PIO_CMD_OFFSET, &pc);
+	pio_sm_put(DEVICE_PIO, i, 8);
+	pio_sm_set_enabled(DEVICE_PIO, i, true);
+}
+
+/*
+ * Starts the given PIO SM in transmit mode. This relies on the Tlt start
+ * delay to avoid stalling at a bad location: be sure to submit data into this
+ * before Tlt timeout.
+ */
+static void dev_pio_tx_start(uint8_t i)
+{
+	pio_sm_config pc;
+	bus_atn_dev_pio_config(&pc, off_pio_tx, machine_di_pins[i]);
+	pio_sm_init(DEVICE_PIO, i, off_pio_tx, &pc);
+	pio_sm_set_enabled(DEVICE_PIO, i, true);
+}
+
+/*
+ * Starts the given PIO SM in receive (Listen) mode.
+ */
+static void dev_pio_rx_start(uint8_t i, volatile uint8_t *dest)
+{
+	pio_sm_config pc;
+	bus_atn_dev_pio_config(&pc, off_pio_tx, machine_di_pins[i]);
+	pio_sm_init(DEVICE_PIO, i, off_pio_tx, &pc);
+	pio_sm_put(DEVICE_PIO, i, 64);
 
 	dma_channel_config dc = dma_channel_get_default_config(dma_channels[i]);
-	channel_config_set_transfer_data_size(&dc, DMA_SIZE_32);
+	channel_config_set_transfer_data_size(&dc, DMA_SIZE_8);
 	channel_config_set_dreq(&dc, pio_get_dreq(DEVICE_PIO, i, false));
 	channel_config_set_read_increment(&dc, false);
-	channel_config_set_write_increment(&dc, false);
+	channel_config_set_write_increment(&dc, true);
 	dma_channel_configure(dma_channels[i], &dc,
-			&(machines[i].attention),
+			dest,
 			&(DEVICE_PIO->rxf[i]),
-			1,
-			true);
-	dma_irqn_set_channel_mask_enabled(DEVICE_DMA_IDX, dma_channels[i], true);
+			8,
+			true); // start
+
+	pio_sm_set_enabled(DEVICE_PIO, i, true);
 }
 
-// used to fire TX at the appropriate time
-// more general policing of stuck lines is in the polling handler
-static void device_timer_isr(void)
+/*
+ * Stops the given PIO and clears the IRQ flag. This is _not_ comprehensive,
+ * for example a stuck pin will continue to be asserted. This may need tweaks
+ * in the future.
+ */
+static void dev_pio_stop(uint8_t i)
 {
-	// TODO implement
+	pio_sm_set_enabled(DEVICE_PIO, i, false);
+	pio_interrupt_clear(HOST_PIO, i);
 }
 
-// used to detect the end of SRQ so TX/RX can be queued properly
-static void device_gpio_isr(void)
+/*
+ * ----------------------------------------------------------------------------
+ *   General ISR Support Routines
+ * ----------------------------------------------------------------------------
+ */
+
+/*
+ * Activates the rising-edge interrupt for a device port. If this returns false
+ * it indicates the relevant GPIO is already high and the ISR was not
+ * scheduled, typical for a slow ISR response and/or short signal of interest.
+ * If true the caller should delegate to the GPIO ISR.
+ */
+static bool setup_gpio_isr(uint8_t id)
 {
-	// TODO implement
-}
-
-// fires during the end of the attention/reset signal only
-static void device_dma_isr(void)
-{
-	// get and clear DMA interrupt bits
-	uint32_t ints = DEVICE_DMA_INTS;
-	DEVICE_DMA_INTS = ints;
-
-	for (uint8_t i = 0; i < DEVICE_COUNT; i++) {
-		if (! (ints & dma_ints_mask[i])) continue;
-
-		// check whether this was attention or reset
-		if (machines[i].attention < PIO_ATN_RESET_THRESH) {
-// TODO RESET
+	// if waiting for Tlt then we need to know when it starts
+	uint32_t const pin = machine_di_pins[id];
+	if (gpio_get(pin)) {
+		return false;
+	} else {
+		// line still low, trigger on rising edge instead
+		gpio_set_irq_enabled(pin, GPIO_IRQ_EDGE_RISE, true);
+		// try to handle race condition above
+		if (gpio_get(pin)) {
+			// sigh, line went high; make sure IRQ is now off
+			gpio_set_irq_enabled(pin, GPIO_IRQ_EDGE_RISE, false);
+			gpio_acknowledge_irq(pin, GPIO_IRQ_EDGE_RISE);
+			return false;
 		} else {
-			machines[i].phase = PHASE_COMMAND;
-
-			pio_sm_set_enabled(DEVICE_PIO, i, false);
-			pio_sm_config pc;
-			bus_rx_dev_pio_config(&pc, off_pio_rx,
-					machine_do_pins[i], machine_di_pins[i]);
-			pio_sm_init(DEVICE_PIO, i, off_pio_rx + PIO_CMD_OFFSET, &pc);
-			pio_sm_put(DEVICE_PIO, i, 8);
-			pio_sm_set_enabled(DEVICE_PIO, i, true);
+			return true;
 		}
 	}
 }
 
-// fires when PIO state machines need servicing by the CPU ('irq wait 0 rel')
+/*
+ * Processes the command byte, updates internal state with the results, and
+ * indicates whether this needs to issue a SRQ.
+ *
+ * This will return false if the command couldn't be processed at all, probably
+ * due to an interrupted command and/or mis-phase.
+ */
+static bool isr_command_process(uint8_t i, bool *srq)
+{
+// TODO protect against empty FIFO
+	uint8_t cmd = bus_rx_dev_get(DEVICE_PIO, i);
+	cmd_type ctype = util_parse_cmd_type(cmd);
+
+	// find if a device matches the command
+	uint8_t devc = machines[i].driver_count;
+	uint8_t d = 0;
+	for (; d < devc; d++) {
+		if (machines[i].drivers[d].address == (cmd >> 4)) {
+			break;
+		}
+	}
+
+	if (d == devc) {
+		// no match, but still need to check SRQ
+		machines[i].command = 0; // to let future handler skip us
+		if (ctype == TYPE_TALK && cmd & 0x3 == 0) {
+			// Talk 0, if we have any pending SRQ issue it
+			if (machines[i].srq) {
+				machines[i].phase = PHASE_SRQ;
+// TODO actually issue
+			}
+		}
+		return true;
+	}
+
+	// determine next step
+	bus_phase next_phase;
+	if (ctype == TYPE_TALK) {
+
+		// check if SRQ is needed
+		next_phase = PHASE_TLT;
+		if (cmd & 0x3 == 0) {
+			// Talk 0, so SRQ may be needed
+			uint16_t srq = machines[i].srq;
+			srq &= ~(1U << cmd & (0xF0));
+			if (srq) {
+				// release IRQ line to allow PIO to fire SRQ
+				pio_interrupt_clear(HOST_PIO, i);
+				next_phase = PHASE_SRQ;
+			}
+		}
+
+// TODO figure out data
+
+	} else if (ctype == TYPE_LISTEN) {
+// Needs a copy of the GPIO interrupt code below
+	} else if (ctype == TYPE_FLUSH) {
+// TODO log Flush
+		// done at this point
+		machines[i].phase = PHASE_IDLE;
+		dev_pio_atn_start(i);
+	} else {
+// TODO error
+	}
+
+
+// TODO rewrite to contract
+	return true;
+}
+
+/*
+ * TODO document
+ *
+ * This returns the next phase. If the command isn't addressing this device the
+ * opportunity is taken here to stop further processing by returning to idle.
+ */
+static bus_phase isr_command_execute(uint8_t i)
+{
+	switch (machines[i].phase) {
+	case TYPE_TALK:
+// TODO implement
+		break;
+	case TYPE_LISTEN:
+// TODO implement
+		break;
+	case TYPE_FLUSH:
+// TODO implement
+		break;
+	default:
+// TODO implement
+	}
+
+// TODO remove
+	return PHASE_IDLE;
+}
+
+/*
+ * Used during GPIO interrupts. Two cases:
+ *
+ * 1) Rising edge at end of attention pulse to detect if signal was long enough
+ *    to trigger a reset,
+ * 2) Rising edge at end of SRQ, signaling start of Tlt.
+ *
+ * Both of these are conditional on the line actually being low. See the
+ * earlier setup function.
+ */
+static void device_gpio_isr(void)
+{
+	for (uint8_t i = 0; i < DEVICE_COUNT; i++) {
+		if (! (gpio_get_irq_event_mask(machine_di_pins[i]) & GPIO_IRQ_EDGE_RISE)) {
+			continue;
+		}
+
+		// we don't need it again (right away), disable (clears interrupt)
+		gpio_set_irq_enabled(machine_di_pins[i], GPIO_IRQ_EDGE_RISE, false);
+
+		switch (machines[i].phase) {
+		case PHASE_ATTENTION:
+			uint32_t td = time_us_64() - machines[i].time;
+			if (td > TIME_RESET_THRESH) {
+				// stop interrupt processing, note reset
+				machines[i].phase = PHASE_IDLE;
+				machines[i].status = STATUS_RESET;
+			} else {
+				// start command processing
+				dev_pio_command_start(i);
+				machines[i].phase = PHASE_COMMAND;
+			}
+			break;
+
+		case PHASE_SRQ:
+			isr_command_execute(i);
+			break;
+
+		default:
+// TODO remaining options are all errors
+		}
+	}
+}
+
+/*
+ * Fires from PIO interrupts. This happens in the following instances:
+ *
+ * 1) Signal of interest in attention phase (min duration attention),
+ * 2) End of command, either due to timeout or the requested number of bits
+ *    being collected,
+ * 3) End of SRQ pulse in the above condition when the IRQ flag is cleared
+ *    without stopping the machine.
+ * 4) End of data RX (Listen) due to bit timeout,
+ * 5) End of data TX (Talk), either due to data underflow (OK) or collision
+ *    state (not OK).
+ */
 static void device_pio_isr(void)
 {
 	uint32_t irq = DEVICE_PIO->irq;
@@ -192,99 +395,66 @@ static void device_pio_isr(void)
 	for (uint8_t i = 0; i < DEVICE_COUNT; i++) {
 		uint32_t irq_bit = 1U << i;
 		if (! (irq & irq_bit)) continue;
-		pio_sm_set_enabled(DEVICE_PIO, i, false);
 
-		bus_phase phase = machines[i].phase;
-		if (phase == PHASE_COMMAND) {
-			if (pio_sm_is_rx_fifo_empty(DEVICE_PIO, i)) {
-				// command aborted
-				machines[i].phase = PHASE_IDLE;
-				enable_pio_atn(i);
-				continue;
-			}
-
-			// otherwise command success, decode
-			uint8_t cmd = bus_rx_dev_get(DEVICE_PIO, i);
-			cmd_type ctype = util_parse_cmd_type(cmd);
-
-			// find if a device matches the command
-			uint8_t devc = machines[i].driver_count;
-			uint8_t d = 0;
-			for (; d < devc; d++) {
-				if (machines[i].drivers[d].address == (cmd >> 4)) {
-					break;
-				}
-			}
-
-			if (d == devc) {
-				// no match, but still need to check SRQ
-				machines[i].command = 0; // to let future handler skip us
-				if (ctype == TYPE_TALK && cmd & 0x3 == 0) {
-					// Talk 0, if we have any pending SRQ issue it
-					if (machines[i].srq) {
-						machines[i].phase = PHASE_SRQ;
-					}
-				}
-				continue;
-			}
-
-			// determine next step
-			bus_phase next_phase;
-			if (ctype == TYPE_TALK) {
-
-				// check if SRQ is needed
-				next_phase = PHASE_TLT;
-				if (cmd & 0x3 == 0) {
-					// Talk 0, SRQ may be needed
-					uint16_t srq = machines[i].srq;
-					srq &= ~(1U << cmd & (0xF0));
-					if (srq) {
-						// release IRQ line to allow PIO fire SRQ
-						pio_interrupt_clear(HOST_PIO, i);
-						next_phase = PHASE_SRQ;
-					}
-				}
-
-// TODO figure out data
-
-			} else if (ctype == TYPE_LISTEN) {
-// Needs a copy of the GPIO interrupt code below
-			} else if (ctype == TYPE_FLUSH) {
-// TODO log Flush
-				// done at this point
-				machines[i].phase = PHASE_IDLE;
-				enable_pio_atn(i);
+		switch (machines[i].phase)
+		{
+		case PHASE_IDLE:
+			dev_pio_stop(i);
+			// attention signal present; is it over yet?
+			if (setup_gpio_isr(i)) {
+				machines[i].time = time_us_64();
+				machines[i].phase = PHASE_ATTENTION;
 			} else {
-// TODO error
+				// too late, already high; assume short enough for reg atn
+				dev_pio_command_start(i);
+				machines[i].phase = PHASE_COMMAND;
 			}
-
-			// if waiting for Tlt then we need to know when it starts
-			if (gpio_get(machine_di_pins[i])) {
-				// already high, just guess from here
-// TODO schedule timer
+			break;
+		case PHASE_COMMAND:
+			// process the command and start issuing a SRQ if needed
+			bool srq = false;
+			if (! isr_command_process(i, &srq)) {
+				// abort completely
+				dev_pio_stop(i);
+				dev_pio_atn_start(i);
+			}
+			if (srq) {
+				// will return into PHASE_SRQ to resolve
+				pio_interrupt_clear(HOST_PIO, i);
+				machines[i].phase = PHASE_SRQ;
 			} else {
-				// line still low, trigger on rising edge instead
-//	GPIO_IRQ_EDGE_RISE
-				// try to handle race condition above
-				if (gpio_get(machine_di_pins[i])) {
-					// sigh, line went high; make sure IRQ is now off
-					gpio_acknowledge_irq(machine_di_pins[i], GPIO_IRQ_EDGE_RISE);
+				dev_pio_stop(i);
+				// PIO will remain stopped, need to transition into GPIO ISR
+				// on the rising edge of the (potentially stretched) stop bit
+				if (! setup_gpio_isr(i)) {
+					// stop bit already over, need to execute now while Tlt
+					machines[i].phase = isr_command_execute(i);
 				} else {
-					// good shape, schedule timer
-// TODO schedule timer
+					// no phase change needed, GPIO IRQ will resolve
+					machines[i].phase = PHASE_SRQ;
 				}
 			}
-
-		} else if (phase == PHASE_SRQ) {
-			if (machines[i].command == 0) {
-				// done at this point
-				machines[i].phase = PHASE_IDLE;
-				enable_pio_atn(i);
+			break;
+		case PHASE_SRQ:
+			dev_pio_stop(i);
+			if (! setup_gpio_isr(i)) {
+				machines[i].phase = isr_command_execute(i);
 			} else {
-// TODO schedule timer
+				// no phase change needed, GPIO IRQ will resolve
 			}
-		} else {
-// TODO need a phase error
+			break;
+		case PHASE_TALK:
+			dev_pio_stop(i);
+// TODO implement
+			break;
+		case PHASE_LISTEN:
+			dev_pio_stop(i);
+// TODO implement
+			break;
+		default:
+			// probably a coding error
+			dev_pio_stop(i);
+			dev_pio_atn_start(i);
 		}
 	}
 }
@@ -293,6 +463,7 @@ void device_init(void)
 {
 	assert(sizeof(machine_do_pins) / 4 == DEVICE_COUNT);
 	assert(sizeof(machine_di_pins) / 4 == DEVICE_COUNT);
+	assert(sizeof(machine_di_irqm) / 4 == DEVICE_COUNT);
 	assert(sizeof(dma_channels) == DEVICE_COUNT);
 
 	/*
@@ -352,13 +523,6 @@ void device_init(void)
 	gpio_init(C3_DI_PIN);
 	gpio_init(C4_DI_PIN);
 
-	/*		c = dma_channel_get_default_config(dma_channels[i]);
-		channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-		channel_config_set_dreq(&c, pio_get_dreq(DEVICE_PIO, i, false));
-		channel_config_set_read_increment(&c, false);
-		channel_config_set_write_increment(&c, true);
-		machines[i].dma_cfg_rx = c;*/
-
 	// setup bus data drivers to push low (idle) by default
 	const uint32_t outpin_masks = A_DO_PIN_bm
 			| C1_DO_PIN_bm
@@ -383,16 +547,12 @@ void device_init(void)
 	pio_set_irq0_source_mask_enabled(DEVICE_PIO, 0xF00, true);
 	irq_set_exclusive_handler(DEVICE_PIO_IRQ0, device_pio_isr);
 
-	// assign DMA interrupt handler
-	irq_set_exclusive_handler(DEVICE_DMA_IRQ, device_dma_isr);
-
 	// setup GPIO rising edge alert (not enabled yet)
-	irq_set_exclusive_handler(IO_IRQ_BANK0, device_gpio_isr);
-
-	// setup timer
-	irq_set_exclusive_handler(DEVICE_TIMER_IRQ, device_timer_isr);
-	hw_set_bits(&timer_hw->inte, 1U << DEVICE_TIMER);
-	irq_set_enabled(DEVICE_TIMER_IRQ, true);
+	gpio_add_raw_irq_handler_masked((1U << C1_DI_PIN)
+			| (1U << C2_DI_PIN)
+			| (1U << C3_DI_PIN)
+			| (1U << C4_DI_PIN),
+			device_gpio_isr);
 }
 
 /*
@@ -401,12 +561,10 @@ void device_init(void)
 void device_start(void)
 {
 	for (uint8_t i = 0; i < DEVICE_COUNT; i++) {
-		enable_pio_atn(i);
+		dev_pio_atn_start(i);
 	}
 
-	// enable interrupts on all peripherals
-	hw_set_bits(&timer_hw->inte, 1U << DEVICE_TIMER);
-	irq_set_enabled(DEVICE_TIMER_IRQ, true);
+	// enable interrupts on peripherals
 	irq_set_enabled(DEVICE_PIO_IRQ0, true);
-	irq_set_enabled(DEVICE_DMA_IRQ, true);
+	irq_set_enabled(IO_IRQ_BANK0, true);
 }
