@@ -22,8 +22,8 @@
 
 #include "bus.h"
 #include "buzzer.h"
+#include "computer.h"
 #include "debug.h"
-#include "device.h"
 #include "driver.h"
 #include "host.h"
 #include "hardware.h"
@@ -39,7 +39,7 @@ static void init_hardware(void)
 
 	buzzer_init();
 	host_init();
-	device_init();
+	computer_init();
 
 	// setup input switch
 	gpio_init(SWITCH_PIN);

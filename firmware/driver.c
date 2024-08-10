@@ -18,7 +18,7 @@
 #include "pico/stdlib.h"
 
 #include "bus.h"
-#include "device.h"
+#include "computer.h"
 #include "driver.h"
 #include "host.h"
 #include "hardware.h"

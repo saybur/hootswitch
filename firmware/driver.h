@@ -35,20 +35,20 @@
  * provides several functions which will be called back by the connected
  * computers to perform varous tasks. The functions are as follows:
  *
- * - void reset_func(uint8_t mach, uint8_t dev)
- * - void switch_func(uint8_t mach)
- * - void talk_func(uint8_t mach, uint8_t dev, uint8_t reg)
- * - void listen_func(uint8_t mach, uint8_t dev, uint8_t reg,
+ * - void reset_func(uint8_t comp, uint8_t dev)
+ * - void switch_func(uint8_t comp)
+ * - void talk_func(uint8_t comp, uint8_t dev, uint8_t reg)
+ * - void listen_func(uint8_t comp, uint8_t dev, uint8_t reg,
  *                 uint8_t *data, uint8_t data_len)
- * - void flush_func(uint8_t mach, uint8_t dev)
- * - bool srq_func(uint8_t mach, uint8_t dev)
- * - void get_handle_func(uint8_t mach, uint8_t dev, uint8_t *handle)
- * - void set_handle_func(uint8_t mach, uint8_t dev, uint8_t handle)
+ * - void flush_func(uint8_t comp, uint8_t dev)
+ * - bool srq_func(uint8_t comp, uint8_t dev)
+ * - void get_handle_func(uint8_t comp, uint8_t dev, uint8_t *handle)
+ * - void set_handle_func(uint8_t comp, uint8_t dev, uint8_t handle)
  * - void poll_func(void)
  *
  * These share some common parameters:
  *
- * - `mach` is the machine ID that the task is coming from.
+ * - `comp` is the computer ID that the task is coming from.
  * - `dev` is the device list ID returned during registration, to differentiate
  *   between multiple devices if more than one gets registered for the same
  *   underlying functions. If you don't register more than one device you can
@@ -63,8 +63,8 @@
  *
  * - `reset_func` is called in response to a reset pulse. Reset state (and DHI)
  *   to defaults.
- * - `switch_func` is called to indicate the active machine the user has picked
- *   is being switched to the one provided.
+ * - `switch_func` is called to indicate the active computer the user has
+ *   picked is being switched to the one provided.
  * - `talk_func` is called after a Talk command has completed, letting the
  *   driver know that the last-submitted Talk data was sent to the computer.
  *   The driver may set new data in response to this call.
@@ -84,10 +84,10 @@
  *   figure out the various challenges associated with multicore usage on the
  *   Pico! :)
  *
- * There is only one "active" machine at any time, the others are inactive. It
- * is up to the driver to decide how to handle active vs inactive machines. For
+ * There is only one "active" computer at any time, the others are inactive. It
+ * is up to the driver to decide how to handle active vs inactive computer. For
  * example, a mouse driver will probably want to only send data to an active
- * machine. However, a virtual modem might want to send data to all machines
+ * computer. However, a virtual modem might want to send data to all computers
  * and maintain state separately for each one, effectively acting like multiple
  * independent devices.
  *
@@ -98,8 +98,8 @@
  * ADB initializes at startup and the device table is not updated again (unless
  * something exceptional happens, like ADBReinit). To accomodate this the
  * manager keeps track of which devices are registered as of the time it
- * receives a machine reset. If you are not registered then you will not be
- * called while that machine is active. Restarting the affected computer
+ * receives a computer reset. If you are not registered then you will not be
+ * called while that computer is active. Restarting the affected computer
  * will cause a new reset event, after which your calls will be invoked
  * normally. This isn't great, but hey, it's ADB, what can you do.
  *

@@ -66,19 +66,19 @@
  * ----------------------------------------------------------------------------
  */
 
-// "devices" refers to the emulators for the remote computers on the back ports
-#define DEVICE_PIO          pio0
-#define DEVICE_PIO_IRQ0     PIO0_IRQ_0
-#define DEVICE_COUNT        4
+// "computer" refers to the emulated device ports on the back
+#define COMPUTER_PIO        pio0
+#define COMPUTER_PIO_IRQ0   PIO0_IRQ_0
+#define COMPUTER_COUNT      4
 
 // device DMA units, used to handle initial signal detection and Listen data
-#define DEVICE_DMA_IRQ      DMA_IRQ_1
-#define DEVICE_DMA_IDX      1
-#define DEVICE_DMA_INTS     dma_hw->ints1
-#define DEVICE_0_DMA        6
-#define DEVICE_1_DMA        7
-#define DEVICE_2_DMA        8
-#define DEVICE_3_DMA        9
+#define COMPUTER_DMA_IRQ    DMA_IRQ_1
+#define COMPUTER_DMA_IDX    1
+#define COMPUTER_DMA_INTS   dma_hw->ints1
+#define COMPUTER_0_DMA      6
+#define COMPUTER_1_DMA      7
+#define COMPUTER_2_DMA      8
+#define COMPUTER_3_DMA      9
 
 // "host" refers to the connection with the native peripherals on the front
 #define HOST_PIO            pio1
@@ -86,8 +86,8 @@
 
 #define BUZZER_TIMER        2
 #define BUZZER_TIMER_IRQ    TIMER_IRQ_2
-#define DEVICE_TIMER        1
-#define DEVICE_TIMER_IRQ    TIMER_IRQ_1
+#define COMPUTER_TIMER      1
+#define COMPUTER_TIMER_IRQ  TIMER_IRQ_1
 #define HOST_TIMER          0
 #define HOST_TIMER_IRQ      TIMER_IRQ_0
 

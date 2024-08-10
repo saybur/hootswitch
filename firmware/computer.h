@@ -15,9 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __DEVICE_H__
-#define __DEVICE_H__
+#ifndef __COMPUTER_H__
+#define __COMPUTER_H__
 
-void device_init(void);
+void computer_init(void);
 
-#endif /* __DEVICE_H__ */
+#endif /* __COMPUTER_H__ */
