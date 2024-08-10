@@ -40,11 +40,15 @@
 #define PIO_RX_TIME_VAL   110
 
 // a few more common timer-based timeouts
-#define MIN_TLT           140
 #define COMMAND_TIMEOUT   (800 + 70 + 800 + 65 + 300 + 200)
 #define RESET_TIMEOUT     (2200 + COMMAND_TIMEOUT)
 #define RX_MAX_TIMEOUT    (300 + 66 * 130)
 #define TYP_CMD_GAP       1000
+
+// Tlt below is influenced by the end of the PIO command, usually +~50us beyond
+// the normal rising edge of the stop bit. Testing is showing that this is
+// significantly longer than it should be still. TODO for fixing.
+#define LISTEN_TX_WAIT    70
 
 // trackers for the PIO state machine used
 static uint32_t pio_offset;
@@ -325,7 +329,7 @@ static void host_pio_isr(void)
 				break;
 			case TYPE_LISTEN:
 				// start timer immediately to avoid missing the window
-				timer_hw->alarm[HOST_TIMER] = time_us_32() + MIN_TLT;
+				timer_hw->alarm[HOST_TIMER] = time_us_32() + LISTEN_TX_WAIT;
 
 				// setup for sending
 				bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
@@ -377,8 +381,10 @@ static void host_pio_isr(void)
  */
 
 // moves from async->sync (if needed) and sends the actual reset command
-static host_err host_reset_bus(void)
+host_err host_reset_bus(void)
 {
+	dbg("host reset bus");
+
 	// send a reset to all handlers
 	for (uint8_t i = 0; i < handler_count(); i++) {
 		ndev_handler *handler;
@@ -541,17 +547,14 @@ static host_err host_prune_faulted(void)
 	}
 }
 
-host_err host_reset(void)
+host_err host_reset_devices(void)
 {
 	host_err err;
 
-	dbg("host reset");
-	if (err = host_reset_bus()) {
-		return err;
+	if (idle_poll) {
+		dbg_err("host not in reset!");
+		return HOSTERR_BAD_STATE;
 	}
-
-	dbg("wait for device reset...");
-	busy_wait_ms(2000);
 
 	dbg("host re-addr");
 	if (err = host_reset_addresses()) {

@@ -20,7 +20,6 @@
 #include "bus.h"
 #include "computer.h"
 #include "driver.h"
-#include "host.h"
 #include "hardware.h"
 
 static dev_driver *device_list[DEVICE_MAX];
@@ -33,12 +32,14 @@ uint8_t driver_count_devices(void)
 
 bool driver_register(uint8_t *dev_id, dev_driver *driver)
 {
-	if (driver == NULL || dev_id == NULL) {
+	if (driver == NULL) {
 		return false;
 	}
 
 	if (device_list_count < DEVICE_MAX) {
-		*dev_id = device_list_count;
+		if (dev_id != NULL) {
+			*dev_id = device_list_count;
+		}
 		device_list[device_list_count++] = driver;
 		return true;
 	} else {
@@ -69,6 +70,8 @@ void driver_init(void)
 void driver_poll(void)
 {
 	for (uint8_t i = 0; i < device_list_count; i++) {
-		device_list[i]->poll_func();
+		if (device_list[i]->poll_func) {
+			device_list[i]->poll_func();
+		}
 	}
 }

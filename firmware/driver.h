@@ -63,21 +63,21 @@
  *
  * - `reset_func` is called in response to a reset pulse. Reset state (and DHI)
  *   to defaults.
- * - `switch_func` is called to indicate the active computer the user has
+ * - [n] `switch_func` is called to indicate the active computer the user has
  *   picked is being switched to the one provided.
- * - `talk_func` is called after a Talk command has completed, letting the
+ * - [n] `talk_func` is called after a Talk command has completed, letting the
  *   driver know that the last-submitted Talk data was sent to the computer.
  *   The driver may set new data in response to this call.
- * - `listen_func` is called in response to a Listen command, offering up to 8
- *   bytes of data to be stored in the driver.
- * - `flush_func` is called in response to a Flush command.
+ * - [n] `listen_func` is called in response to a Listen command, offering up
+ *   to 8 bytes of data to be stored in the driver.
+ * - [n] `flush_func` is called in response to a Flush command.
  * - (!) `get_handle_func` should return the currently assigned DHI. This can
  *   be either the default _or_ a DHI from set_handle_func that was actually
  *   accepted.
- * - (!) `set_handle_func` offers a new DHI to assign. If the handle is
+ * - (!) [n] `set_handle_func` offers a new DHI to assign. If the handle is
  *   supported it should be assigned internally and then returned each time
  *   from get_handle_func, otherwise leave the old handle alone.
- * - `poll_func` is called periodically to give time for your driver to do
+ * - [n] `poll_func` is called periodically to give time for your driver to do
  *   whatever it wants. This is cooperative, do not perform excessive
  *   processing here if you can avoid it. If you _really_ need processing time
  *   core1 is available for your use, but it will be your responsibility to
@@ -86,7 +86,8 @@
  *
  * The functions marked with (!) above are called from an interrupt. Ensure
  * these return _very quickly_, just update a relevant variable and provide
- * it back, leaving processing to a later non-interrupt call.
+ * it back, leaving processing to a later non-interrupt call. The functions
+ * marked with [n] may be NULL.
  *
  * There is only one "active" computer at any time, the others are inactive. It
  * is up to the driver to decide how to handle active vs inactive computer. For
@@ -112,23 +113,22 @@
  */
 
 typedef struct {
-	uint8_t *dhi;
+	uint8_t default_addr; // default bus address to be used at reset
 	void (*reset_func)(uint8_t, uint8_t);
 	void (*switch_func)(uint8_t);
 	void (*talk_func)(uint8_t, uint8_t, uint8_t);
 	void (*listen_func)(uint8_t, uint8_t, uint8_t, volatile uint8_t*, uint8_t);
 	void (*flush_func)(uint8_t, uint8_t);
-	bool (*srq_func)(uint8_t);
 	void (*get_handle_func)(uint8_t, uint8_t, uint8_t*);
 	void (*set_handle_func)(uint8_t, uint8_t, uint8_t);
-	bool (*poll_func)(void);
+	void (*poll_func)(void);
 } dev_driver;
 
 /*
  * The maximum number of simultaneous devices allowed to be installed at any
  * given time. This definitely can't be higher than 14, but given ADB's
  * addressing scheme it is likely a lower number is the true maximum.
- * 
+ *
  * This is distinct from the maximum number of total _drivers_ allowed. Some
  * drivers may be creating multiple devices, so the total number of drivers is
  * probably lower than the below number.
@@ -145,7 +145,8 @@ uint8_t driver_count_devices(void);
  * driver pointer internally. This will also set a device identifier in the
  * integer pointer, which will be used when calling back the functions given.
  *
- * @param *dev_id  will be set to the device identifier, for later callbacks.
+ * @param *dev_id  will be set to the device identifier, for later callbacks,
+ *                 or NULL if the driver doesn't need this.
  * @param *driver  pointer to the new driver to add.
  * @return         true if it was added, false otherwise.
  */

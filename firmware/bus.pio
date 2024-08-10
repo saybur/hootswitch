@@ -327,6 +327,7 @@ static inline void bus_rx_dev_pio_config(pio_sm_config *c,
 		uint32_t offset, uint32_t pin_write, uint32_t pin_read)
 {
 	*c = bus_rx_dev_program_get_default_config(offset);
+	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_in_shift(c, false, true, 8); // shift left
@@ -370,6 +371,7 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 {
 	*c = bus_atn_dev_program_get_default_config(offset);
 	sm_config_set_jmp_pin(c, pin_read);
+	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_out_shift(c, true, true, 32); // shift right
 	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
 }

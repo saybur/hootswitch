@@ -15,19 +15,34 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __COMPUTER_H__
-#define __COMPUTER_H__
+#include "pico/stdlib.h"
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "../debug.h"
+#include "../driver.h"
 
-#include "driver.h"
+static void testdrv_reset(uint8_t comp, uint8_t device)
+{
+	// do nothing
+}
 
-bool computer_data_offer(dev_driver *drv, uint8_t comp, uint8_t reg,
-		uint8_t *data, uint8_t data_len);
+static void testdrv_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
+{
+	*hndl = 0x01;
+}
 
-void computer_init(void);
-void computer_start(void);
-void computer_poll(void);
+static dev_driver drvr = {
+	.default_addr = 0x02,
+	.reset_func = testdrv_reset,
+	.switch_func = NULL,
+	.talk_func = NULL,
+	.listen_func = NULL,
+	.flush_func = NULL,
+	.get_handle_func = testdrv_get_handle,
+	.set_handle_func = NULL,
+	.poll_func = NULL
+};
 
-#endif /* __COMPUTER_H__ */
+void testdrv_init(void)
+{
+	driver_register(NULL, &drvr);
+}

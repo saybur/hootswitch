@@ -15,19 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __COMPUTER_H__
-#define __COMPUTER_H__
+#ifndef __TESTDRV_H__
+#define __TESTDRV_H__
 
-#include <stdbool.h>
-#include <stdint.h>
+void testdrv_init(void);
 
-#include "driver.h"
-
-bool computer_data_offer(dev_driver *drv, uint8_t comp, uint8_t reg,
-		uint8_t *data, uint8_t data_len);
-
-void computer_init(void);
-void computer_start(void);
-void computer_poll(void);
-
-#endif /* __COMPUTER_H__ */
+#endif /* __TESTDRV_H__ */
