@@ -23,12 +23,12 @@
 #include "host.h"
 #include "hardware.h"
 
-static dev_driver driver_list[DRIVER_MAXIMUM];
-static uint8_t driver_list_count;
+static dev_driver *device_list[DEVICE_MAX];
+static uint8_t device_list_count;
 
-uint8_t driver_count(void)
+uint8_t driver_count_devices(void)
 {
-	return driver_list_count;
+	return device_list_count;
 }
 
 bool driver_register(uint8_t *dev_id, dev_driver *driver)
@@ -37,19 +37,19 @@ bool driver_register(uint8_t *dev_id, dev_driver *driver)
 		return false;
 	}
 
-	if (driver_list_count < DRIVER_MAXIMUM) {
-		*dev_id = driver_list_count;
-		driver_list[driver_list_count++] = *driver;
+	if (device_list_count < DEVICE_MAX) {
+		*dev_id = device_list_count;
+		device_list[device_list_count++] = driver;
 		return true;
 	} else {
 		return false;
 	}
 }
 
-bool driver_get(uint8_t dev, dev_driver **driver)
+bool driver_get(uint8_t dev_id, dev_driver **driver)
 {
-	if (dev < driver_list_count) {
-		*driver = &(driver_list[dev]);
+	if (dev_id < device_list_count) {
+		*driver = device_list[dev_id];
 		return true;
 	} else {
 		return false;
@@ -68,7 +68,7 @@ void driver_init(void)
 
 void driver_poll(void)
 {
-	for (uint8_t i = 0; i < driver_list_count; i++) {
-		driver_list[i].poll_func();
+	for (uint8_t i = 0; i < device_list_count; i++) {
+		device_list[i]->poll_func();
 	}
 }

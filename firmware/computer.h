@@ -18,6 +18,14 @@
 #ifndef __COMPUTER_H__
 #define __COMPUTER_H__
 
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "driver.h"
+
+bool computer_data_offer(dev_driver *drv, uint8_t comp, uint8_t reg,
+		uint8_t *data, uint8_t data_len);
+
 void computer_init(void);
 
 #endif /* __COMPUTER_H__ */

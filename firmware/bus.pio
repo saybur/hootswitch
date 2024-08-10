@@ -255,6 +255,15 @@ static inline void bus_tx_dev_put(PIO pio, uint8_t sm, uint8_t v)
 	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
 	*txf = v;
 }
+
+static inline void bus_tx_dev_putm(PIO pio, uint8_t sm,
+		volatile uint8_t *v, uint8_t len)
+{
+	io_rw_8 *txf = (io_rw_8 *) &(pio->txf[sm]);
+	for (uint8_t i = 0; i < len; i++) {
+		*txf = *v++;
+	}
+}
 %}
 
 

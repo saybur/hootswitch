@@ -18,7 +18,7 @@
 #include <stdbool.h>
 
 #include "pico/stdlib.h"
-#include "pico/critical_section.h"
+#include "pico/sync.h"
 #include "hardware/dma.h"
 #include "hardware/timer.h"
 
