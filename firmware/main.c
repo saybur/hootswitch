@@ -20,7 +20,6 @@
 #include "pico/cyw43_arch.h"
 #include "hardware/gpio.h"
 
-#include "bus.h"
 #include "buzzer.h"
 #include "computer.h"
 #include "debug.h"
@@ -28,7 +27,6 @@
 #include "host.h"
 #include "hardware.h"
 #include "led.h"
-#include "manager.h"
 
 #define PROGRAM_NAME   "hootswitch-v20240803"
 

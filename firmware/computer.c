@@ -23,7 +23,6 @@
 #include "hardware/dma.h"
 #include "hardware/timer.h"
 
-#include "bus.h"
 #include "bus.pio.h"
 #include "buzzer.h"
 #include "computer.h"
