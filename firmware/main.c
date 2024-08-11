@@ -62,22 +62,21 @@ int main(void)
 
 	handler_init();
 
-// FIXME here only for debugging
-#include "drivers/testdrv.h"
-testdrv_init();
-computer_start();
-
 	host_err herr;
 	if (herr = host_reset_bus()) {
 		dbg_err("host bus reset err %d", herr);
 	}
-	busy_wait_ms(2000);
+	busy_wait_ms(1000);
 
-	// for loopback testing, bring any devices out of reset
-	computer_poll();
+	// test: turn computer 1 on
+	gpio_put(C1_PSW_PIN, 1);
+	busy_wait_ms(1000);
+	gpio_put(C1_PSW_PIN, 0);
 
 	if (herr = host_reset_devices()) {
 		dbg_err("host device reset err %d", herr);
+	} else {
+		dbg("host reset ok!");
 	}
 
 	driver_init();
@@ -85,18 +84,6 @@ computer_start();
 
 	led_machine(0, 64);
 	led_machine(2, 64);
-
-
-for (uint8_t x = 0; x < 3; x++) {
-// more test code
-uint8_t data[2];
-data[0] = 0x0E;
-data[1] = 0xFE;
-uint16_t id;
-uint8_t datalen = 2;
-uint8_t cmd_move = (1 << 4) | ((uint8_t) COMMAND_LISTEN_3);
-host_cmd(0xFF, cmd_move, &id, data, datalen);
-}
 
 	while (1) {
 		host_poll();

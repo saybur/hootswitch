@@ -708,18 +708,18 @@ void computer_init(void)
 	gpio_set_slew_rate(C4_PSW_PIN, GPIO_SLEW_RATE_SLOW);
 
 	// set the power switches to drive low (idle) by default
+	gpio_init(C1_PSW_PIN);
 	gpio_put(C1_PSW_PIN, 0);
 	gpio_set_dir(C1_PSW_PIN, GPIO_OUT);
-	gpio_init(C1_PSW_PIN);
+	gpio_init(C2_PSW_PIN);
 	gpio_put(C2_PSW_PIN, 0);
 	gpio_set_dir(C2_PSW_PIN, GPIO_OUT);
-	gpio_init(C2_PSW_PIN);
+	gpio_init(C3_PSW_PIN);
 	gpio_put(C3_PSW_PIN, 0);
 	gpio_set_dir(C3_PSW_PIN, GPIO_OUT);
-	gpio_init(C3_PSW_PIN);
+	gpio_init(C4_PSW_PIN);
 	gpio_put(C4_PSW_PIN, 0);
 	gpio_set_dir(C4_PSW_PIN, GPIO_OUT);
-	gpio_init(C4_PSW_PIN);
 
 	// setup input pins
 	gpio_init(C1_DI_PIN);
@@ -809,6 +809,7 @@ void computer_poll(void)
 		// handle reset condition, if present
 		if (computers[i].status == STATUS_RESET) {
 			// reset count to 0 to stop updates via ISRs
+			dbg("cmp %d rst {", i);
 			computers[i].device_count = 0;
 
 			// rebuild list of drivers
@@ -818,6 +819,7 @@ void computer_poll(void)
 				driver_get(d, &drv);
 				computers[i].devices[d].address = drv->default_addr;
 				computers[i].devices[d].driver = drv;
+				dbg("  add %d ($%X)", d, drv->default_addr);
 
 				// while we're here, call the reset handler
 				drv->reset_func(i, d);
@@ -828,6 +830,7 @@ void computer_poll(void)
 
 			// mark reset complete
 			computers[i].status = STATUS_NORMAL;
+			dbg("} got %d", dcnt);
 		}
 	}
 }

@@ -526,14 +526,17 @@ static host_err host_handle_setup(void)
 			} else if (res) {
 				dbg("    id %d accepted", did);
 				device_handlers[did] = handler;
+				handler->assign_func(device, did);
 			}
 		}
 	}
+
+	return HOSTERR_OK;
 }
 
 // removes faulted devices and devices with no handler from the listing to
 // avoid dealing with them later
-static host_err host_prune_faulted(void)
+static void host_prune_faulted(void)
 {
 	for (uint8_t i = 0; i < device_count; i++) {
 		if (devices[i].fault || device_handlers[i] == NULL) {

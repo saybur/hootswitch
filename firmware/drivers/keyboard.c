@@ -17,13 +17,39 @@
 
 #include "pico/stdlib.h"
 
+#include "../computer.h"
 #include "../debug.h"
+#include "../driver.h"
 #include "../handler.h"
 
 #include "keyboard.h"
 
+static uint8_t device_id;
+
 static volatile uint8_t buffer[2];
 static volatile uint8_t buffer_count;
+
+static void drvr_reset(uint8_t comp, uint8_t device)
+{
+	// do nothing
+}
+
+static void drvr_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
+{
+	*hndl = 0x02;
+}
+
+static dev_driver keyboard_driver = {
+	.default_addr = 0x02,
+	.reset_func = drvr_reset,
+	.switch_func = NULL,
+	.talk_func = NULL,
+	.listen_func = NULL,
+	.flush_func = NULL,
+	.get_handle_func = drvr_get_handle,
+	.set_handle_func = NULL,
+	.poll_func = NULL
+};
 
 static void hndl_reset(void)
 {
@@ -37,7 +63,8 @@ static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
 
 static void hndl_assign(volatile ndev_info *info, uint8_t id)
 {
-	// TODO implement
+	// TODO this is unsafe with multiple resets
+	driver_register(&device_id, &keyboard_driver);
 }
 
 static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
@@ -49,6 +76,7 @@ static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
 		buffer_count = 2;
 	}
 	dbg("kbd: %d %d", buffer[0], buffer[1]);
+	computer_data_offer(&keyboard_driver, 0, device_id, data, data_len);
 }
 
 static void hndl_listen(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg)
@@ -63,10 +91,7 @@ static void hndl_flush(uint8_t dev, uint8_t err, uint16_t cid)
 
 static void hndl_poll(void)
 {
-	if (buffer_count == 2) {
-		dbg("kbd: %d / %d", buffer[0], buffer[1]);
-		buffer_count = 0;
-	}
+	// TODO implement
 }
 
 static ndev_handler keyboard_handler = {
