@@ -55,7 +55,7 @@ host_err host_sync_cmd(uint8_t dev, uint8_t cmd,
 		uint8_t *data, uint8_t *length);
 
 // used during the command callback, do not invoke
-void host_sync_cb(host_err err, uint16_t id, cmd_type type,
+void host_sync_cb(host_err err, uint32_t id, cmd_type type,
 		volatile uint8_t *data, uint8_t data_len);
 
 #endif /* __HOST_SYNC_H__ */

@@ -102,7 +102,7 @@ typedef struct {
 static volatile host_command queue[CMD_QUEUE_SIZE];
 static volatile uint8_t queue_tail;
 static volatile uint8_t queue_count;
-static volatile uint16_t queue_id = 1;
+static volatile uint32_t queue_id = 1;
 
 /*
  * ----------------------------------------------------------------------------
@@ -240,33 +240,14 @@ static void host_timer(void)
 				cmd_idx = (cmd_idx + i) & CMD_QUEUE_MASK;
 			}
 
+			// was one found?
 			if (queue_count > 0 && queue[cmd_idx].state == CMD_PENDING) {
 				cmd_idx = cmd_idx;
 				cmd_last_dev = queue[cmd_idx].device;
 			} else {
-				// none pending, check if there is space to add a command;
-				// if idle polling is not enabled then always take next branch
-				// (device_count == 0 protection in _reset() and _cmd())
-				if (idle_poll && queue_count < CMD_QUEUE_SIZE) {
-					// there is space, insert a new Talk 0 prompt for us
-					cmd_idx = (queue_tail + queue_count) & CMD_QUEUE_MASK;
-					queue_count++;
-					queue[cmd_idx].state = CMD_PENDING;
-					queue[cmd_idx].id = 0;
-					if (srq) cmd_last_dev++;
-					if (cmd_last_dev >= device_count) cmd_last_dev = 0;
-					queue[cmd_idx].device = cmd_last_dev;
-					queue[cmd_idx].type = TYPE_TALK;
-					queue[cmd_idx].command =
-							((devices[cmd_last_dev].address_cur) << 4)
-							| (uint8_t) COMMAND_TALK_0;
-					queue[cmd_idx].error = HOSTERR_OK;
-				} else {
-					// no, short-circuit to wait a bit for space to free up
-					// or the init routines to help us out a bit
-					timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
-					return;
-				}
+				// no, try again after a wait
+				timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
+				return;
 			}
 
 			// start command
@@ -412,7 +393,7 @@ static void host_pio_isr(void)
  * ----------------------------------------------------------------------------
  */
 
-// moves from async->sync (if needed) and sends the actual reset command
+// calls reset_func on handlers and sends the reset pulse on the bus
 host_err host_reset_bus(void)
 {
 	dbg("host reset bus");
@@ -696,7 +677,7 @@ void host_init(void)
  * ----------------------------------------------------------------------------
  */
 
-host_err host_cmd(uint8_t dev, uint8_t cmd, uint16_t *id,
+host_err host_cmd(uint8_t dev, uint8_t cmd, uint32_t *id,
 		uint8_t *data, uint8_t len)
 {
 	if (dev != 0xFF && dev >= device_count) {
@@ -729,11 +710,16 @@ host_err host_cmd(uint8_t dev, uint8_t cmd, uint16_t *id,
 	host_err result = HOSTERR_OK;
 	uint32_t isr = save_and_disable_interrupts();
 	if (queue_count < CMD_QUEUE_SIZE) {
-		*id = queue_id;
-
 		uint8_t queue_pos = (queue_tail + queue_count) & CMD_QUEUE_MASK;
 		queue[queue_pos].state = CMD_PENDING;
-		queue[queue_pos].id = queue_id++;
+
+		if (id != NULL) {
+			*id = queue_id;
+			queue[queue_pos].id = queue_id++;
+		} else {
+			queue[queue_pos].id = 0;
+		}
+
 		queue[queue_pos].device = dev;
 		if (dev != 0xFF) {
 			queue[queue_pos].command = ((devices[dev].address_cur) << 4)
@@ -794,7 +780,8 @@ void host_poll(void)
 				switch (queue[idx].type) {
 				case TYPE_TALK:
 					if (hndl->talk_func
-							&& ! (queue[idx].length == 0 && ! hndl->accept_noop_talks)) {
+							&& ! (queue[idx].length == 0
+									&& ! hndl->accept_noop_talks)) {
 						hndl->talk_func(
 								queue[idx].device,
 								queue[idx].error,
@@ -834,5 +821,13 @@ void host_poll(void)
 			queue_count--;
 			restore_interrupts(isr);
 		}
+	}
+
+	// if no commands are pending insert an idle poll command
+	if (idle_poll && queue_count == 0) {
+		uint8_t dev = cmd_last_dev;
+		if (srq) dev++;
+		if (dev >= device_count) dev = 0;
+		host_cmd(dev, COMMAND_TALK_0, NULL, NULL, 0);
 	}
 }

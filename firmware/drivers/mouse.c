@@ -74,7 +74,7 @@ static void hndl_assign(volatile ndev_info *info, uint8_t id)
 	driver_register(&device_id, &mouse_driver);
 }
 
-static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
+static void hndl_talk(uint8_t dev, uint8_t err, uint32_t cid, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
 	if (data_len >= 2) {

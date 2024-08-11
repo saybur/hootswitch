@@ -125,9 +125,9 @@ typedef struct {
 	void (*reset_func)(void);
 	bool (*interview_func)(volatile ndev_info*, uint8_t*);
 	void (*assign_func)(volatile ndev_info*, uint8_t);
-	void (*talk_func)(uint8_t, host_err, uint16_t, uint8_t, uint8_t*, uint8_t);
-	void (*listen_func)(uint8_t, host_err, uint16_t, uint8_t);
-	void (*flush_func)(uint8_t, host_err, uint16_t);
+	void (*talk_func)(uint8_t, host_err, uint32_t, uint8_t, uint8_t*, uint8_t);
+	void (*listen_func)(uint8_t, host_err, uint32_t, uint8_t);
+	void (*flush_func)(uint8_t, host_err, uint32_t);
 	void (*poll_func)(void);
 } ndev_handler;
 

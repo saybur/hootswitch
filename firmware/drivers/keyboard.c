@@ -74,7 +74,7 @@ static void hndl_assign(volatile ndev_info *info, uint8_t id)
 	driver_register(&device_id, &keyboard_driver);
 }
 
-static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
+static void hndl_talk(uint8_t dev, uint8_t err, uint32_t cid, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
 	if (data_len >= 2) {
@@ -86,12 +86,12 @@ static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
 	computer_data_offer(comp_id, device_id, 0, buffer, data_len);
 }
 
-static void hndl_listen(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg)
+static void hndl_listen(uint8_t dev, uint8_t err, uint32_t cid, uint8_t reg)
 {
 	// TODO implement
 }
 
-static void hndl_flush(uint8_t dev, uint8_t err, uint16_t cid)
+static void hndl_flush(uint8_t dev, uint8_t err, uint32_t cid)
 {
 	// TODO implement
 }

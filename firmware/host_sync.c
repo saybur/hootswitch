@@ -22,12 +22,12 @@
 
 static volatile bool callback;
 static volatile cmd_type type_back;
-static volatile uint16_t id_back;
+static volatile uint32_t id_back;
 static volatile uint8_t data_back[8];
 static volatile uint8_t length_back;
 static volatile host_err error_back;
 
-void host_sync_cb(host_err err, uint16_t id, cmd_type type,
+void host_sync_cb(host_err err, uint32_t id, cmd_type type,
 		volatile uint8_t *data, uint8_t data_len)
 {
 	callback = true;
@@ -51,7 +51,7 @@ host_err host_sync_cmd(uint8_t dev, uint8_t cmd,
 {
 	callback = false;
 
-	uint16_t id;
+	uint32_t id;
 	host_err res;
 	if (res = host_cmd(dev, cmd, &id, data, *length)) {
 		return res;

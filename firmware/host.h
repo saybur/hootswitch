@@ -43,18 +43,18 @@ typedef enum {
  * This is not needed for some devices: the controller will auto-poll Register
  * 0 on any device that issues a SRQ, so if you are the handler for a device
  * you'll still get calls whenever the native device issues a SRQ and returns
- * data for Talk 0.
+ * data for Talk 0. These calls will have an ID of 0.
  *
  * @param dev   device number from the register call.
  * @param cmd   ADB command to execute (suggest using bus_command above).
  * @param id    will be assigned an identifier, which will match the callback;
- *              some handlers may not care and can freely ignore this.
+ *              may be NULL, which uses a default ID callback of 0.
  * @param data  up to 8 bytes of data if a Listen command, ignored otherwise.
  * @param len   length of data if Listen, ignored otherwise.
  * @return      true if the request could be queued, false otherwise; this is
  *              due to the queue being full or an invalid device.
  */
-host_err host_cmd(uint8_t dev, uint8_t cmd, uint16_t *id,
+host_err host_cmd(uint8_t dev, uint8_t cmd, uint32_t *id,
 		uint8_t *data, uint8_t len);
 
 /**
