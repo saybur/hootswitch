@@ -11,7 +11,7 @@ add_executable(hootswitch)
 pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 
 target_sources(hootswitch PRIVATE
-		drivers/keyboard.c
+		drivers/keyboard.c drivers/mouse.c
 		bus.c buzzer.c computer.c debug.c driver.c handler.c host.c host_sync.c led.c manager.c main.c util.c
 		)
 

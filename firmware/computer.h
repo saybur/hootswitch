@@ -23,8 +23,21 @@
 
 #include "driver.h"
 
-bool computer_data_offer(dev_driver *drv, uint8_t comp, uint8_t reg,
+bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
 		uint8_t *data, uint8_t data_len);
+
+/**
+ * Switch to the computer matching the target.
+ *
+ * If the target number is greater than COMPUTER_COUNT this is interpreted as
+ * "switch to next computer," otherwise it switches to the computer at the
+ * index selected.
+ *
+ * @param target  the target computer number, 0-COMPUTER_COUNT-1, or higher
+ *                than that to switch to the next system.
+ * @return        true if switch went OK, false if no switch occurred.
+ */
+bool computer_switch(uint8_t target);
 
 void computer_init(void);
 void computer_start(void);

@@ -25,10 +25,12 @@
 
 #include "bus.h"
 #include "bus.pio.h"
+#include "buzzer.h"
 #include "computer.h"
 #include "debug.h"
 #include "driver.h"
 #include "hardware.h"
+#include "led.h"
 #include "util.h"
 
 /*
@@ -49,6 +51,9 @@
 #define PIO_ATN_MIN             386
 #define TIME_RESET_THRESH       400
 #define RX_MAX_BITS             64
+
+#define LED_ACTIVE              70
+#define LED_DETECT              40
 
 typedef enum {
 	PHASE_IDLE,
@@ -73,7 +78,11 @@ typedef struct {
 } comp_device;
 
 typedef struct {
-	bool active;              // true if this is the user-selected computer
+	uint8_t talk[3][8];
+	uint8_t talk_len[3];
+} driver_data_t;
+
+typedef struct {
 	bus_phase phase;
 	comp_status status;
 
@@ -81,7 +90,7 @@ typedef struct {
 	uint8_t device_count;
 
 	bool srq_en[DEVICE_MAX];  // true if SRQ enable flag is set in reg3
-	uint16_t srq;             // queued service requests, indexed by virt addr
+	uint16_t srq;             // queued service requests, bit flags by dev#
 	uint64_t time;            // multiple use, but mostly when phase started
 	bool collision;           // was the previous Talk a collision?
 
@@ -92,8 +101,7 @@ typedef struct {
 	uint8_t listen_data[8];   // sink for DMA data during Listen
 
 	// buffers for Talk data storage on register 0-2
-	uint8_t talk_data[3][8 * DEVICE_MAX];
-	uint8_t talk_data_len[3][DEVICE_MAX];
+	driver_data_t driver_data[DEVICE_MAX];
 
 	// general values to assist with debugging/info reporting
 	uint32_t dbg_atn;          // attention from GPIO ISR
@@ -101,7 +109,7 @@ typedef struct {
 	uint32_t dbg_rst;          // reset conditions
 	uint32_t dbg_abrt;         // any incomplete termination (these are ok)
 	uint32_t dbg_err;          // incomplete termination due to coding bugs
-} computer;
+} computer_t;
 
 uint32_t const computer_do_pins[] = {
 	C1_DO_PIN, C2_DO_PIN, C3_DO_PIN, C4_DO_PIN
@@ -124,7 +132,8 @@ const uint8_t randt[] = {
 	0x0E, 0x82, 0x74, 0x41, 0x21, 0x3D, 0xDC, 0x87
 };
 
-static volatile computer computers[COMPUTER_COUNT];
+static volatile uint8_t active_computer = 255;
+static volatile computer_t computers[COMPUTER_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
 static volatile uint8_t rand_idx;
 
@@ -319,13 +328,14 @@ static bool isr_command_process(uint8_t i, bool *srq)
 		d++;
 	}
 
-	// see if SRQ is warranted
-	if (ctype == TYPE_TALK && cmd & 0x3 == 0) {
-		// Talk 0, if device exists we need to mask it out
+	// SRQ issued if anyone wants it; omit device being talked to
+	*srq = false;
+	if (ctype == TYPE_TALK && (cmd & 0x3) == 0) {
 		if (d < devc) {
-			computers[i].srq &= ~(1U << addr);
+			*srq = computers[i].srq & ~(1U << d);
+		} else {
+			*srq = computers[i].srq;
 		}
-		*srq = computers[i].srq;
 	}
 
 	computers[i].command = cmd;
@@ -371,7 +381,7 @@ static bus_phase isr_command_execute(uint8_t i)
 			return PHASE_TALK;
 		} else {
 			uint8_t dev = computers[i].device;
-			uint8_t dlen = computers[i].talk_data_len[reg][dev];
+			uint8_t dlen = computers[i].driver_data[dev].talk_len[reg];
 			if (dlen == 0) {
 				// no data: halt transmission and let it time out
 				dev_pio_stop(i);
@@ -379,7 +389,7 @@ static bus_phase isr_command_execute(uint8_t i)
 				return PHASE_IDLE;
 			} else {
 				bus_tx_dev_putm(COMPUTER_PIO, i,
-						computers[i].talk_data[(dev * 8)], dlen);
+						computers[i].driver_data[dev].talk[reg], dlen);
 				return PHASE_TALK;
 			}
 		}
@@ -415,9 +425,13 @@ static void isr_talk_complete(uint8_t i)
 		uint8_t reg = computers[i].reg;
 		uint8_t addr = computers[i].devices[dev].address;
 
-		computers[i].srq &= ~(1U << addr);
+		if (reg == 0) {
+			computers[i].srq &= ~(1U << dev);
+		}
 		if (reg < 3) {
-			computers[i].talk_data_len[computers[i].reg][dev] = 0;
+			computers[i].driver_data[dev].talk_len[reg] = 0;
+			uint8_t qi;
+			queue_add(&qi, i);
 		}
 	}
 }
@@ -448,10 +462,15 @@ static void isr_listen_complete(uint8_t i)
 		} else if (lw == 0xFD || lw == 0xFF) {
 			// outright ignore, we don't use activators or self-tests
 		} else if (lw == 0x00 || lw == 0xFE) {
-			// change the address, ignore the handler
-			if (! lw) computers[i].srq_en[dev] = up & 0x20;
-			computers[i].srq &= ~(1U << (computers[i].devices[dev].address));
+			// address change command
 			computers[i].devices[dev].address = up & 0xF;
+			if (lw == 0x00) {
+				// only change SRQ for 0x00, 0xFE apparently assumes unchanged
+				computers[i].srq_en[dev] = up & 0x20;
+				if (! (up & 0x20)) {
+					computers[i].srq &= ~(1U << dev);
+				}
+			}
 		} else {
 			// propose new handler
 			dev_driver *drvr = computers[i].devices[dev].driver;
@@ -462,11 +481,12 @@ static void isr_listen_complete(uint8_t i)
 	} else {
 		// more traditional data delivery
 		uint8_t qi;
-		queue_add(&qi, i);
-		for (uint8_t di = 0; di < xfer; di++) {
-			queue[qi].data[di] = computers[i].listen_data[di];
+		if (queue_add(&qi, i)) {
+			for (uint8_t di = 0; di < xfer; di++) {
+				queue[qi].data[di] = computers[i].listen_data[di];
+			}
+			queue[qi].length = xfer;
 		}
-		queue[qi].length = xfer;
 	}
 }
 
@@ -618,40 +638,28 @@ static void computer_pio_isr(void)
  * ---------------------------------------------------------------------------
  */
 
-bool computer_data_offer(dev_driver *drv, uint8_t comp, uint8_t reg,
+bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
-	if (data_len > 8) return false;
 	if (comp >= COMPUTER_COUNT) return false;
+	if (dev >= computers[comp].device_count) return false;
 	if (reg > 2) return false;
+	if (data_len > 8 || data_len == 0) return false;
 
-	// no driver list changes are permitted once this is set
-	// must be present to protect lower code from concurrent changes
 	if (computers[comp].status != STATUS_NORMAL) return false;
-
-	// find the matching driver
-	uint8_t devc = computers[comp].device_count;
-	uint8_t d = 0;
-	for (; d < devc; d++) {
-		// compare pointers for match
-		if (computers[comp].devices[d].driver == drv) {
-			break;
-		}
-	}
-	if (d == devc) return false;
 
 	// remaining steps change internal state, protect from concurrent access
 	uint32_t isr = save_and_disable_interrupts();
 
 	// copy data
 	for (uint8_t i = 0; i < data_len; i++) {
-		computers[comp].talk_data[reg][(d * 8) + i] = data[i];
+		computers[comp].driver_data[dev].talk[reg][i] = data[i];
 	}
-	computers[comp].talk_data_len[reg][d] = data_len;
+	computers[comp].driver_data[dev].talk_len[reg] = data_len;
 
 	// update SRQ flags if needed
-	if (reg == 0) { // only for Talk 0
-		computers[comp].srq |= (1U << computers[comp].devices[d].address);
+	if (reg == 0 && computers[comp].srq_en[dev]) { // only for Talk 0
+		computers[comp].srq |= 1U << dev;
 	}
 
 	restore_interrupts(isr);
@@ -682,10 +690,10 @@ void computer_init(void)
 	uint8_t sm_mask;
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		sm_mask |= (1U << i);
-		computers[i] = (computer) {
-			.phase = PHASE_IDLE, .status = STATUS_OFF,
-			.active = false
+		computers[i] = (computer_t) {
+			.phase = PHASE_IDLE, .status = STATUS_OFF
 		};
+		for (uint j = 0; j < DEVICE_MAX; j++) computers[i].srq_en[j] = true;
 	}
 
 	// issue claims for peripherals to avoid accidental conflicts
@@ -770,6 +778,55 @@ void computer_start(void)
 	irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
+bool computer_switch(uint8_t target)
+{
+	// move to either next system _or_ target system
+	uint8_t next = active_computer;
+	if (target >= COMPUTER_COUNT) {
+		dbg("sw next");
+		for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
+			next++;
+			if (next >= COMPUTER_COUNT) next = 0;
+			if (computers[next].status == STATUS_NORMAL) {
+				break;
+			}
+		}
+	} else {
+		dbg("user sw cmp %d", target);
+		next = target;
+	}
+
+	// cancel if no match and/or out of range
+	if (next >= COMPUTER_COUNT) {
+		dbg("  sw veto, no cmp %d", next);
+	} else {
+		dbg("  sw to %d", next);
+	}
+
+	// update LED if there is a current active system
+	if (active_computer < COMPUTER_COUNT) {
+		led_machine(active_computer, LED_DETECT);
+	}
+
+	// switch all the drivers over
+	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
+		uint8_t dcnt = driver_count_devices();
+		for (uint8_t d = 0; d < dcnt; d++) {
+			dev_driver *drv = computers[i].devices[d].driver;
+			if (drv->switch_func) {
+				drv->switch_func(next);
+			}
+		}
+	}
+
+	// finally update
+	active_computer = next;
+	led_machine(active_computer, LED_ACTIVE);
+	buzzer_chirp();
+	dbg("sw ok!");
+	return true;
+}
+
 void computer_poll(void)
 {
 	while (queue_count) {
@@ -827,6 +884,14 @@ void computer_poll(void)
 
 			// reset length to match new set of drivers
 			computers[i].device_count = dcnt;
+
+			// mark this as active if we haven't seen a system yet
+			if (active_computer == 255) {
+				computer_switch(i);
+			}
+
+			// update LED to reflect system is active
+			led_machine(i, active_computer == i ? LED_ACTIVE : LED_DETECT);
 
 			// mark reset complete
 			computers[i].status = STATUS_NORMAL;

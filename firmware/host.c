@@ -40,7 +40,7 @@
 #define PIO_RX_TIME_VAL   110
 
 // a few more common timer-based timeouts
-#define COMMAND_TIMEOUT   (800 + 70 + 800 + 65 + 300 + 200)
+#define COMMAND_TIMEOUT   (800 + 70 + 800 + 65 + 300 + 300)
 #define RESET_TIMEOUT     (2200 + COMMAND_TIMEOUT)
 #define RX_MAX_TIMEOUT    (300 + 66 * 130)
 #define TYP_CMD_GAP       1000
@@ -48,7 +48,7 @@
 // Tlt below is influenced by the end of the PIO command, usually +~50us beyond
 // the normal rising edge of the stop bit. Testing is showing that this is
 // significantly longer than it should be still. TODO for fixing.
-#define LISTEN_TX_WAIT    70
+#define LISTEN_TX_WAIT    110
 
 // trackers for the PIO state machine used
 static uint32_t pio_offset;
@@ -103,6 +103,38 @@ static volatile host_command queue[CMD_QUEUE_SIZE];
 static volatile uint8_t queue_tail;
 static volatile uint8_t queue_count;
 static volatile uint16_t queue_id = 1;
+
+/*
+ * ----------------------------------------------------------------------------
+ *   General Functions
+ * ----------------------------------------------------------------------------
+ */
+
+// sends Talk Register 3 command to an address, returning errors
+host_err reg3_sync_talk(uint8_t addr, uint8_t *hi, uint8_t *lo)
+{
+	uint8_t data[8];
+	uint8_t datalen = 2;
+	uint8_t cmd = (addr << 4) | (uint8_t) COMMAND_TALK_3;
+	host_err err = host_sync_cmd(0xFF, cmd, data, &datalen);
+	if (err) return err;
+	if (datalen != 2) return HOSTERR_BAD_RESPONSE;
+	*hi = data[0];
+	*lo = data[1];
+	return HOSTERR_OK;
+}
+
+// sends Listen Register 3 to an address, returning errors
+host_err reg3_sync_listen(uint8_t addr, uint8_t hi, uint8_t lo)
+{
+	uint8_t data[2];
+	uint8_t datalen = 2;
+	uint8_t cmd = (addr << 4) | (uint8_t) COMMAND_LISTEN_3;
+	data[0] = hi;
+	data[1] = lo;
+	host_err err = host_sync_cmd(0xFF, cmd, data, &datalen);
+	return err;
+}
 
 /*
  * ----------------------------------------------------------------------------
@@ -414,46 +446,28 @@ static host_err host_reset_addresses(void)
 	// readdress the devices
 	device_count = 0;
 	host_err err = HOSTERR_OK;
+	uint8_t addr_top = 0xE;
 	uint8_t addr_free = 0xE;
-	uint8_t data[2] = { 0 };
-	uint8_t datalen;
+	uint8_t hi, lo;
 
-	for(uint8_t i = 1; i <= 7; i++) {
-		dbg("  addr $%X {", i);
+	for (uint8_t base_addr = 1; base_addr <= 7; base_addr++) {
+		dbg("  addr $%X {", base_addr);
 		uint8_t dev_at_addr = 0;
 
 		// move all devices at address to free slots
-		datalen = 2;
-		uint8_t cmd = (i << 4) | ((uint8_t) COMMAND_TALK_3);
-		while (! (err = host_sync_cmd(0xFF, cmd, data, &datalen))) {
-			// did device return the right amount of data?
-			if (datalen != 2) {
-				dbg_err("    dev reg3 != 2b, %d", datalen);
-				return HOSTERR_BAD_DEVICE;
-			}
-
+		while (! (err = reg3_sync_talk(base_addr, &hi, &lo))) {
 			// found a device, report the default handler
-			dbg("    fnd $%X (id %d)", data[1], device_count);
-			// and move it to a free address
+			uint8_t dhid = lo;
+			dbg("    fnd $%X (id %d)", dhid, device_count);
+
+			// move it to a free address
 			dev_at_addr++;
-			uint8_t dhid = data[1];
 			dbg("    mov $%X", addr_free);
-			data[0] = addr_free;
-			data[1] = 0xFE;
-			datalen = 2;
-			uint8_t cmd_move = (i << 4) | ((uint8_t) COMMAND_LISTEN_3);
-			if (err = host_sync_cmd(0xFF, cmd_move, data, &datalen)) {
+			if (err = reg3_sync_listen(base_addr, addr_free, 0xFE)) {
 				dbg_err("    (!) %d", err);
+				// TODO should this be fatal for entire host side?
 				return err;
 			}
-
-			// store data on device
-			devices[device_count].address_def = i;
-			devices[device_count].address_cur = addr_free;
-			devices[device_count].dhid_def = dhid;
-			devices[device_count].dhid_cur = dhid;
-			devices[device_count].fault = false;
-			device_count++;
 
 			// advance for next
 			addr_free--;
@@ -468,21 +482,74 @@ static host_err host_reset_addresses(void)
 			return err;
 		}
 
-		// move last-moved device back to original address
-		// different from the ADB Manager's first-moved procedure, but this
-		// seems simpler and should (in theory) be OK with all devices
+		/*
+		 * Now perform a swap between the original address and the new location
+		 * for each device. Verifies they are working and sets SRQ flags.
+		 */
+		uint8_t srq_flag = 0x20;
+		for (uint8_t i = 0; i < dev_at_addr; i++) {
+			uint8_t cur_addr = addr_top - i;
+
+			// is device still listening to us?
+			if (err = reg3_sync_talk(cur_addr, &hi, &lo)) {
+				dbg_err("    $%X fail T3 %d", cur_addr, err);
+				continue;
+			}
+			// move back to original address
+			dbg("    mov $%X, $%X", base_addr, cur_addr);
+			if (err = reg3_sync_listen(cur_addr, base_addr, 0x00)) {
+				dbg_err("    $%X fail L3 lo mov %d", cur_addr, err);
+				continue;
+			}
+			// did it make it?
+			if (err = reg3_sync_talk(base_addr, &hi, &lo)) {
+				dbg_err("    $%X fail T3 lo mov %d", err);
+				continue;
+			}
+
+			// move back to high address, this time including SRQ flag
+			dbg("    mov $%X, $%X", cur_addr, base_addr);
+			if (err = reg3_sync_listen(base_addr, cur_addr | srq_flag, 0x00)) {
+				dbg_err("    $%X fail L3 hi mov %d", cur_addr, err);
+				continue;
+			}
+			// did it make it?
+			if (err = reg3_sync_talk(cur_addr, &hi, &lo)) {
+				// uh-oh, this is more problematic, low address is now fouled!
+				dbg_err("    $%X fail T3 hi mov %d", err);
+				return err; // drop out
+			}
+
+			// now treat the device as permanent and add to our records
+			devices[device_count].address_def = base_addr;
+			devices[device_count].address_cur = cur_addr;
+			devices[device_count].dhid_def = lo;
+			devices[device_count].dhid_cur = lo;
+			devices[device_count].fault = false;
+			device_count++;
+		}
+
+		/*
+		 * Take the device at the lowest address moved to and put it back in
+		 * the original address. Technically different than ADB Manager but
+		 * this seems simpler; there seems to be some diversity in how Macs
+		 * initialize the ADB bus.
+		 */
 		if (dev_at_addr > 0) {
-			addr_free++;
-			dbg("    mov $%X, $%X", i, addr_free);
-			data[0] = i;
-			data[1] = 0x00;
-			datalen = 2;
-			cmd = (addr_free << 4) | ((uint8_t) COMMAND_LISTEN_3);
-			if (err = host_sync_cmd(0xFF, cmd, data, &datalen)) {
+			dbg("    mov $%X, $%X", base_addr, addr_free + 1);
+			if (err = reg3_sync_listen(addr_free + 1, base_addr | srq_flag, 0x00)) {
 				dbg_err("    (!) %d", err);
 				return err;
 			}
-			devices[(device_count - 1)].address_cur = i;
+			if (err = reg3_sync_talk(base_addr, &hi, &lo)) {
+				dbg_err("    $%X fail T3 fin mov %d", err);
+				return err;
+			}
+			devices[(device_count - 1)].address_cur = base_addr;
+
+			// adjust for next round
+			addr_free++;
+			addr_top = addr_free;
 		}
 		dbg("  } got %d", dev_at_addr);
 	}

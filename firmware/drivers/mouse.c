@@ -22,7 +22,7 @@
 #include "../driver.h"
 #include "../handler.h"
 
-#include "keyboard.h"
+#include "mouse.h"
 
 static uint8_t comp_id;
 static uint8_t device_id;
@@ -42,11 +42,11 @@ static void drvr_switch(uint8_t comp)
 
 static void drvr_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
 {
-	*hndl = 0x02;
+	*hndl = 0x01;
 }
 
-static dev_driver keyboard_driver = {
-	.default_addr = 0x02,
+static dev_driver mouse_driver = {
+	.default_addr = 0x03,
 	.reset_func = drvr_reset,
 	.switch_func = drvr_switch,
 	.talk_func = NULL,
@@ -64,14 +64,14 @@ static void hndl_reset(void)
 
 static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
 {
-	return info->address_def == 0x02
+	return info->address_def == 0x03
 			&& (info->dhid_cur == 0x01 || info->dhid_cur == 0x02);
 }
 
 static void hndl_assign(volatile ndev_info *info, uint8_t id)
 {
-	// TODO this is unsafe with multiple resets / devices
-	driver_register(&device_id, &keyboard_driver);
+	// TODO this is unsafe with multiple resets
+	driver_register(&device_id, &mouse_driver);
 }
 
 static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
@@ -82,38 +82,23 @@ static void hndl_talk(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg,
 		buffer[1] = data[1];
 		buffer_count = 2;
 	}
-	dbg("kbd: %d %d", buffer[0], buffer[1]);
-	computer_data_offer(comp_id, device_id, 0, buffer, data_len);
+	dbg("mse: %d %d", buffer[0], buffer[1]);
+	computer_data_offer(comp_id, device_id, 0, buffer, buffer_count);
 }
 
-static void hndl_listen(uint8_t dev, uint8_t err, uint16_t cid, uint8_t reg)
-{
-	// TODO implement
-}
-
-static void hndl_flush(uint8_t dev, uint8_t err, uint16_t cid)
-{
-	// TODO implement
-}
-
-static void hndl_poll(void)
-{
-	// TODO implement
-}
-
-static ndev_handler keyboard_handler = {
-	.name = "kbd",
+static ndev_handler mouse_handler = {
+	.name = "mse",
 	.accept_noop_talks = false,
 	.reset_func = hndl_reset,
 	.interview_func = hndl_interview,
 	.assign_func = hndl_assign,
 	.talk_func = hndl_talk,
-	.listen_func = hndl_listen,
-	.flush_func = hndl_flush,
-	.poll_func = hndl_poll
+	.listen_func = NULL,
+	.flush_func = NULL,
+	.poll_func = NULL
 };
 
-void keyboard_init(void)
+void mouse_init(void)
 {
-	handler_register(&keyboard_handler);
+	handler_register(&mouse_handler);
 }

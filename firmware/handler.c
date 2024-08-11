@@ -20,6 +20,7 @@
 #include "handler.h"
 
 #include "drivers/keyboard.h"
+#include "drivers/mouse.h"
 
 // the full list of possible device handlers
 static ndev_handler handler_list[HANDLER_MAX];
@@ -63,6 +64,7 @@ void handler_init(void)
 	 */
 
 	keyboard_init();
+	mouse_init();
 }
 
 void handler_poll(void)

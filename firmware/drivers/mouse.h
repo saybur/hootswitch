@@ -15,20 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __HOST_ERR_H__
-#define __HOST_ERR_H__
+#ifndef __MOUSE_H__
+#define __MOUSE_H__
 
-typedef enum {
-	HOSTERR_OK = 0,
-	HOSTERR_TIMEOUT = 1,
-	HOSTERR_FULL = 2,
-	HOSTERR_INVALID_PARAM = 3,
-	HOSTERR_LINE_STUCK = 4,
-	HOSTERR_TOO_MANY_DEVICES = 5,
-	HOSTERR_BAD_DEVICE = 6,
-	HOSTERR_NO_DEVICES = 7,
-	HOSTERR_BAD_STATE = 8,
-	HOSTERR_BAD_RESPONSE = 9
-} host_err;
+void mouse_init(void);
 
-#endif /* __HOST_ERR_H__ */
+#endif /* __MOUSE_H__ */

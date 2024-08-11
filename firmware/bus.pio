@@ -85,10 +85,10 @@ txh_be:
 	jmp !osre txh_bs side 0 [6] ; +35us high, loop if more data
 
 	nop             side 1 [12] ; assert stop bit for 65us
-	nop             side 0 [7]  ; wait 40us
+	nop             side 0 [7]  ; release, wait 40us
 	jmp pin txh_e   side 0      ; skip to end if line high
 	irq 4 rel       side 0      ; otherwise set the SRQ detection flag
-	wait 1 pin 0    side 0      ; then wait for the line to go high
+	wait 1 pin 0    side 0      ; and wait for the line to go high
 txh_e:
 	irq wait 0 rel  side 0      ; done
 

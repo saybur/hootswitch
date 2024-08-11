@@ -82,13 +82,20 @@ int main(void)
 	driver_init();
 	computer_start();
 
-	led_machine(0, 64);
-	led_machine(2, 64);
-
+	uint32_t sw_cnt = 0;
 	while (1) {
 		host_poll();
 		computer_poll();
 		handler_poll();
 		driver_poll();
+
+		if (! gpio_get(SWITCH_PIN)) {
+			sw_cnt++;
+		} else {
+			if (sw_cnt > 3) {
+				computer_switch(255);
+				sw_cnt = 0;
+			}
+		}
 	}
 }
