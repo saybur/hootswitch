@@ -1,9 +1,21 @@
 hootswitch
 ==========
 
-Hootswitch is an [ADB](https://en.wikipedia.org/wiki/Apple_Desktop_Bus)
-multiplexer, allowing one keyboard and mouse to be switched between up to
-four retro computers.
+Hootswitch is a prototype [ADB](https://en.wikipedia.org/wiki/Apple_Desktop_Bus)
+multiplexer, allowing peripherals (inluding keyboard and mouse) to be shared
+across up to four retro computers.
+
+This project has two parts: an example hardware design and the firmware,
+located in their respective folders in this repo.
+
+Status
+------
+
+Many basic features are under development and do not work correctly. Many bugs
+remain. As of now, do not make one of these expecting a fully functional
+device: everything here is proof-of-concept at best.
+
+This section will be updated as progress is (hopefully) made.
 
 Building
 --------
