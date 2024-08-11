@@ -20,10 +20,12 @@
 #include "debug.h"
 #include "host_sync.h"
 
+#define MAX_CB_DATA 8
+
 static volatile bool callback;
 static volatile cmd_type type_back;
 static volatile uint32_t id_back;
-static volatile uint8_t data_back[8];
+static volatile uint8_t data_back[MAX_CB_DATA];
 static volatile uint8_t length_back;
 static volatile host_err error_back;
 
@@ -34,6 +36,7 @@ void host_sync_cb(host_err err, uint32_t id, cmd_type type,
 	id_back = id;
 	type_back = type;
 
+	if (data_len > MAX_CB_DATA) data_len = MAX_CB_DATA;
 	if (type == TYPE_TALK) {
 		for (uint8_t i = 0; i < data_len; i++) {
 			data_back[i] = data[i];
@@ -50,6 +53,11 @@ host_err host_sync_cmd(uint8_t dev, uint8_t cmd,
 		uint8_t *data, uint8_t *length)
 {
 	callback = false;
+
+	// data is OK but we have to dereference length, disallow null
+	if (length == NULL) {
+		return HOSTERR_INVALID_PARAM;
+	}
 
 	uint32_t id;
 	host_err res;

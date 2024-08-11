@@ -31,7 +31,7 @@
 #include "util.h"
 
 #define DEVICE_MAX        14
-#define DMA_MAX_BITS      65
+#define DMA_MAX_BITS      131
 
 // see the PIO host definitions for what these values mean
 #define PIO_CMD_OFFSET    2
@@ -82,8 +82,8 @@ static volatile uint8_t device_count;
  * The state tracker here is used by the async routines to hunt for commands
  * that can be sent on the bus. See below for details.
  */
-#define CMD_QUEUE_SIZE 16
-#define CMD_QUEUE_MASK 15
+#define CMD_QUEUE_SIZE 8
+#define CMD_QUEUE_MASK 7
 typedef enum {
 	CMD_EMPTY = 0,
 	CMD_PENDING,
@@ -95,7 +95,7 @@ typedef struct {
 	uint8_t device;
 	cmd_type type;
 	uint8_t command;
-	uint8_t data[8];
+	uint8_t data[DMA_MAX_BITS];
 	uint8_t length;
 	host_err error;
 } host_command;
@@ -161,24 +161,26 @@ static void host_pio_load_tx(bool tx)
 	}
 }
 
-static volatile uint16_t rxbuf[DMA_MAX_BITS];
-
-// parses device reception buffer and writes result to supplied byte array
-// returns the number of recognized bytes
-static uint8_t host_parse_rxbuf(volatile uint8_t *data, uint8_t bits)
+/*
+ * Parses the results of PIO RX bit-time data into bytes. Modifies the array
+ * provided and returns the number of valid bytes found. See the host-side
+ * RX function in bus.pio for details.
+ */
+static uint8_t parse_rx_bit_data(volatile uint8_t *data, uint8_t bits)
 {
 	if (bits > DMA_MAX_BITS) bits = DMA_MAX_BITS;
-	if (bits < 1) return 0;
-	bits -= 1; // first bit is start bit, ignore
+	if (bits < 2) return 0;
+	bits -= 2; // first bit is start bit, ignore
 
-	uint8_t bytes = bits / 8;
-	volatile uint16_t *in = &(rxbuf[1]);
+	uint8_t bytes = bits / 16;
+	volatile uint8_t *in = &(data[2]);
 	for (uint i = 0; i < bytes; i++) {
 		uint8_t b = 0;
 		for (uint j = 0; j < 8; j++) {
 			if (j != 0) b = b << 1;
-			uint16_t v = *in++;
-			if ((v >> 8) > (v & 0xFF)) {
+			uint8_t vl = *in++;
+			uint8_t vh = *in++;
+			if (vl > vh) {
 				b |= 1;
 			}
 		}
@@ -328,7 +330,7 @@ static void host_pio_isr(void)
 				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
 				pio_sm_put(HOST_PIO, pio_sm, PIO_RX_TIME_VAL);
 				dma_channel_configure(dma_chan, &dma_rx_cfg,
-						rxbuf,
+						queue[cmd_idx].data,
 						&(HOST_PIO->rxf[pio_sm]),
 						DMA_MAX_BITS, // 8 bytes plus start/stop bits
 						true); // start
@@ -366,8 +368,7 @@ static void host_pio_isr(void)
 			// normal end of Talk, either timeout or data response
 			uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
 			dma_channel_abort(dma_chan);
-			uint8_t len = host_parse_rxbuf(queue[cmd_idx].data,
-					DMA_MAX_BITS - dma_remain);
+			uint8_t len = DMA_MAX_BITS - dma_remain;
 			queue[cmd_idx].length = len;
 			if (len == 0) queue[cmd_idx].error = HOSTERR_TIMEOUT;
 
@@ -413,7 +414,8 @@ host_err host_reset_bus(void)
 	while (phase != HOST_IDLE);
 
 	// send reset command
-	return host_sync_cmd(0xFF, 0x00, NULL, NULL);
+	uint8_t len = 0;
+	return host_sync_cmd(0xFF, 0x00, NULL, &len);
 }
 
 // performs ADB address shuffling
@@ -652,7 +654,7 @@ void host_init(void)
 
 	// create base DMA configuration
 	dma_rx_cfg = dma_channel_get_default_config(dma_chan);
-	channel_config_set_transfer_data_size(&dma_rx_cfg, DMA_SIZE_16);
+	channel_config_set_transfer_data_size(&dma_rx_cfg, DMA_SIZE_8);
 	channel_config_set_dreq(&dma_rx_cfg, pio_get_dreq(HOST_PIO, pio_sm, false));
 	channel_config_set_read_increment(&dma_rx_cfg, false);
 	channel_config_set_write_increment(&dma_rx_cfg, true);
@@ -768,6 +770,15 @@ void host_poll(void)
 				hndl = device_handlers[queue[idx].device];
 			}
 
+			// if Talk, convert bit-times to bytes before returning
+			uint8_t dlen = queue[idx].length;
+			if (queue[idx].type == TYPE_TALK && dlen > 0) {
+				dlen = parse_rx_bit_data(
+						queue[idx].data,
+						queue[idx].length);
+				queue[idx].length = dlen;
+			}
+
 			// perform callback
 			if (hndl == NULL) {
 				host_sync_cb(
@@ -775,7 +786,7 @@ void host_poll(void)
 						queue[idx].id,
 						queue[idx].type,
 						queue[idx].data,
-						queue[idx].length);
+						dlen);
 			} else {
 				switch (queue[idx].type) {
 				case TYPE_TALK:
@@ -788,7 +799,7 @@ void host_poll(void)
 								queue[idx].id,
 								queue[idx].command & 0x3,
 								(uint8_t *) queue[idx].data,
-								queue[idx].length);
+								dlen);
 					}
 					break;
 				case TYPE_LISTEN:

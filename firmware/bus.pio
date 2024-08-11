@@ -40,7 +40,7 @@
 
 ; Writes command or data bits from the TX FIFO to the bus, including the
 ; preable/postable. This version is used when acting as a host. It is similar
-; to the above one except for the following:
+; to the device implementation except for the following:
 ;
 ; 1) The start will be attention with sync _or_ '1' start bit, depending on
 ;    what offset is used,
@@ -121,10 +121,10 @@ static inline void bus_tx_host_put(PIO pio, uint8_t sm, uint8_t v)
 ; duration of the low & high parts of a bit pulse and pushes the residual
 ; timeout countdown into the RX FIFO for later interpretation by the CPU as '0'
 ; and '1' based on which part of the signal has a _lower_ value, indicating
-; that part took longer. Outputs are 16-bit words, structured like this:
+; that part took longer. Outputs are pairs of 8 bits, structured like this:
 ;
-; - If (v >> 8) < (v & 0xFF), '0' bit
-; - If (v >> 8) > (v & 0xFF), '1' bit
+; - If v[0] < v[1], '0' bit
+; - If v[0] > v[1], '1' bit
 ;
 ; Timeouts here are common, both due to Tlt expiring without a transmission and
 ; the remote device stopping a data transfer. To avoid a deadlock two
@@ -173,7 +173,7 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 {
 	*c = bus_rx_host_program_get_default_config(offset);
 	sm_config_set_jmp_pin(c, pin_read);
-	sm_config_set_in_shift(c, false, true, 16); // shift left
+	sm_config_set_in_shift(c, false, true, 8); // shift left
 	sm_config_set_out_shift(c, true, true, 8); // shift right
 	sm_config_set_clkdiv_int_frac(c, 50, 0); // 0.4us/clk
 }
