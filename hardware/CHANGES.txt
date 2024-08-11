@@ -1,0 +1,6 @@
+DESIGN CHANGES
+
+Refer to section 3.3.b of the license for information that must be included in
+this document.
+
+- 23 July 2024, rev 2024a: first design
