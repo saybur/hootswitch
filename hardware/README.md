@@ -7,6 +7,8 @@ issues with it include:
 - Some features are untested, including alternate power modes.
 - C1 in the BOM is wrong. Since I am not using the power input at the moment I
   left it unpopulated.
+- There is no keepout for the wireless chip, which may negatively impact
+  reception.
 - Annular rings on the mini-DIN connectors are on the small side.
 - Green LEDs are too bright. Adjusted in 2024a with PWM. Future revision needs
   stronger resistors.
