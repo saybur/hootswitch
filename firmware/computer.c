@@ -17,6 +17,7 @@
 
 #include <stdbool.h>
 
+#include "pico/sem.h"
 #include "pico/stdlib.h"
 #include "pico/sync.h"
 #include "pico/rand.h"
@@ -72,32 +73,33 @@ typedef enum {
 
 // "devices" are virtual ADB peripherals that are ran by an underlying driver.
 typedef struct {
-	uint8_t address;
+	volatile uint8_t address;
 	dev_driver *driver;
 } comp_device;
 
 typedef struct {
+	semaphore_t sem;
 	uint8_t talk[3][8];
 	uint8_t talk_len[3];
 } driver_data_t;
 
 typedef struct {
-	bus_phase phase;
-	comp_status status;
+	volatile bus_phase phase;
+	volatile comp_status status;
 
 	comp_device devices[DEVICE_MAX];
 	uint8_t device_count;
 
-	bool srq_en[DEVICE_MAX];  // true if SRQ enable flag is set in reg3
-	uint16_t srq;             // queued service requests, bit flags by dev#
-	uint64_t time;            // multiple use, but mostly when phase started
-	bool collision;           // was the previous Talk a collision?
+	volatile bool srq_en[DEVICE_MAX];  // true if SRQ enable flag is set in reg3
+	volatile uint16_t srq;             // queued service requests, bit flags by dev#
+	volatile uint64_t time;            // multiple use, but mostly when phase started
+	volatile bool collision;           // was the previous Talk a collision?
 
-	uint8_t command;          // caches last command received
-	uint8_t device;           // caches last active device index
-	uint8_t reg;              // caches last active register (or 0)
-	cmd_type command_type;    // caches last command's type
-	uint8_t listen_data[8];   // sink for DMA data during Listen
+	volatile uint8_t command;          // caches last command received
+	volatile uint8_t device;           // caches last active device index
+	volatile uint8_t reg;              // caches last active register (or 0)
+	volatile cmd_type command_type;    // caches last command's type
+	volatile uint8_t listen_data[8];   // sink for DMA data during Listen
 
 	// buffers for Talk data storage on register 0-2
 	driver_data_t driver_data[DEVICE_MAX];
@@ -108,6 +110,7 @@ typedef struct {
 	uint32_t dbg_rst;          // reset conditions
 	uint32_t dbg_abrt;         // any incomplete termination (these are ok)
 	uint32_t dbg_err;          // incomplete termination due to coding bugs
+	uint32_t dbg_lock;         // unable to send due to data semaphore
 } computer_t;
 
 uint32_t const computer_do_pins[] = {
@@ -132,7 +135,7 @@ const uint8_t randt[] = {
 };
 
 static volatile uint8_t active_computer = 255;
-static volatile computer_t computers[COMPUTER_COUNT];
+static computer_t computers[COMPUTER_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
 static volatile uint8_t rand_idx;
 
@@ -380,16 +383,28 @@ static bus_phase isr_command_execute(uint8_t i)
 			return PHASE_TALK;
 		} else {
 			uint8_t dev = computers[i].device;
-			uint8_t dlen = computers[i].driver_data[dev].talk_len[reg];
-			if (dlen == 0) {
-				// no data: halt transmission and let it time out
+			driver_data_t *drv_data = &computers[i].driver_data[dev];
+			if (sem_try_acquire(&drv_data->sem)) {
+				// got the lock
+				uint8_t dlen = drv_data->talk_len[reg];
+				if (dlen == 0) {
+					// no data: halt transmission and let it time out
+					sem_release(&drv_data->sem);
+					dev_pio_stop(i);
+					dev_pio_atn_start(i);
+					return PHASE_IDLE;
+				} else {
+					bus_tx_dev_putm(COMPUTER_PIO, i,
+							drv_data->talk[reg], dlen);
+					// hold the semaphore until data send done
+					return PHASE_TALK;
+				}
+			} else {
+				// data being updated, act as though we have nothing
+				computers[i].dbg_lock++;
 				dev_pio_stop(i);
 				dev_pio_atn_start(i);
 				return PHASE_IDLE;
-			} else {
-				bus_tx_dev_putm(COMPUTER_PIO, i,
-						computers[i].driver_data[dev].talk[reg], dlen);
-				return PHASE_TALK;
 			}
 		}
 	case TYPE_LISTEN:
@@ -414,15 +429,14 @@ static bus_phase isr_command_execute(uint8_t i)
 static void isr_talk_complete(uint8_t i)
 {
 	// collision?
+	uint8_t dev = computers[i].device;
 	if (COMPUTER_PIO->irq & (1U << (i + 4))) {
 		computers[i].collision = true;
 		pio_interrupt_clear(COMPUTER_PIO, i + 4);
 		// leave data alone, we'll need it later
 	} else {
 		computers[i].collision = false;
-		uint8_t dev = computers[i].device;
 		uint8_t reg = computers[i].reg;
-		uint8_t addr = computers[i].devices[dev].address;
 
 		if (reg == 0) {
 			computers[i].srq &= ~(1U << dev);
@@ -433,6 +447,7 @@ static void isr_talk_complete(uint8_t i)
 			queue_add(&qi, i);
 		}
 	}
+	sem_release(&computers[i].driver_data[dev].sem);
 }
 
 static void isr_listen_complete(uint8_t i)
@@ -647,22 +662,24 @@ bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
 
 	if (computers[comp].status != STATUS_NORMAL) return false;
 
-	// remaining steps change internal state, protect from concurrent access
-	uint32_t isr = save_and_disable_interrupts();
+	driver_data_t *drv = &computers[comp].driver_data[dev];
+	if (sem_acquire_timeout_us(&drv->sem, 1000)) {
+		// copy data
+		for (uint8_t i = 0; i < data_len; i++) {
+			drv->talk[reg][i] = data[i];
+		}
+		drv->talk_len[reg] = data_len;
 
-	// copy data
-	for (uint8_t i = 0; i < data_len; i++) {
-		computers[comp].driver_data[dev].talk[reg][i] = data[i];
+		// update SRQ flags if needed
+		if (reg == 0 && computers[comp].srq_en[dev]) { // only for Talk 0
+			computers[comp].srq |= 1U << dev;
+		}
+
+		sem_release(&drv->sem);
+		return true;
+	} else {
+		return false;
 	}
-	computers[comp].driver_data[dev].talk_len[reg] = data_len;
-
-	// update SRQ flags if needed
-	if (reg == 0 && computers[comp].srq_en[dev]) { // only for Talk 0
-		computers[comp].srq |= 1U << dev;
-	}
-
-	restore_interrupts(isr);
-	return true;
 }
 
 /*
@@ -692,7 +709,10 @@ void computer_init(void)
 		computers[i] = (computer_t) {
 			.phase = PHASE_IDLE, .status = STATUS_OFF
 		};
-		for (uint j = 0; j < DEVICE_MAX; j++) computers[i].srq_en[j] = true;
+		for (uint j = 0; j < DEVICE_MAX; j++) {
+			computers[i].srq_en[j] = true;
+			sem_init(&(computers[i].driver_data[j].sem), 1, 1);
+		}
 	}
 
 	// issue claims for peripherals to avoid accidental conflicts
