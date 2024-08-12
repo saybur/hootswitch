@@ -28,11 +28,11 @@ static uint8_t comp_id;
 static uint8_t device_id;
 
 static uint8_t buffer[2];
-static uint8_t buffer_count;
 
 static void drvr_reset(uint8_t comp, uint8_t device)
 {
-	// do nothing
+	buffer[0] = 0x80;
+	buffer[1] = 0x80;
 }
 
 static void drvr_switch(uint8_t comp)
@@ -45,11 +45,19 @@ static void drvr_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
 	*hndl = 0x01;
 }
 
+static void drvr_talk(uint8_t comp, uint8_t device, uint8_t reg)
+{
+	if (reg == 0) {
+		buffer[0] = 0x80;
+		buffer[1] = 0x80;
+	}
+}
+
 static dev_driver mouse_driver = {
 	.default_addr = 0x03,
 	.reset_func = drvr_reset,
 	.switch_func = drvr_switch,
-	.talk_func = NULL,
+	.talk_func = drvr_talk,
 	.listen_func = NULL,
 	.flush_func = NULL,
 	.get_handle_func = drvr_get_handle,
@@ -77,13 +85,14 @@ static void hndl_assign(volatile ndev_info *info, uint8_t id)
 static void hndl_talk(uint8_t dev, uint8_t err, uint32_t cid, uint8_t reg,
 		uint8_t *data, uint8_t data_len)
 {
-	if (data_len >= 2) {
-		buffer[0] = data[0];
-		buffer[1] = data[1];
-		buffer_count = 2;
+	if (reg == 0 && data_len >= 2) {
+		int8_t y = ((int8_t) (data[0] & 0x7F)) + ((int8_t) (buffer[0] & 0x7F));
+		int8_t x = ((int8_t) (data[1] & 0x7F)) + ((int8_t) (buffer[1] & 0x7F));
+		buffer[0] = (data[0] & 0x80) | (((uint8_t) y) & 0x7F);
+		buffer[1] = (data[1] & 0x80) | (((uint8_t) x) & 0x7F);
+		computer_data_offer(comp_id, device_id, 0, buffer, 2);
+		dbg("mse: %d %d", buffer[0], buffer[1]);
 	}
-	dbg("mse: %d %d", buffer[0], buffer[1]);
-	computer_data_offer(comp_id, device_id, 0, buffer, buffer_count);
 }
 
 static ndev_handler mouse_handler = {
@@ -101,4 +110,6 @@ static ndev_handler mouse_handler = {
 void mouse_init(void)
 {
 	handler_register(&mouse_handler);
+	buffer[0] = 0x80;
+	buffer[1] = 0x80;
 }
