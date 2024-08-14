@@ -40,6 +40,10 @@ Clone the [Pico SDK](https://github.com/raspberrypi/pico-sdk). Execute
 something like `export PICO_SDK_PATH=/home/saybur/src/pico-sdk` would be
 suitable after being adjusted for your environment.
 
+Also clone or download [FreeRTOS](https://github.com/FreeRTOS). The LTS release
+is likely fine. Set `FREERTOS_KERNEL_PATH` to the folder where
+`FreeRTOS-Kernel` is located via the above method.
+
 Once you have everything set up, build as follows.
 
 ```
