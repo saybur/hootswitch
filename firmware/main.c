@@ -20,6 +20,9 @@
 #include "pico/cyw43_arch.h"
 #include "hardware/gpio.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "buzzer.h"
 #include "computer.h"
 #include "debug.h"
@@ -28,7 +31,10 @@
 #include "hardware.h"
 #include "led.h"
 
-#define PROGRAM_NAME   "hootswitch-v20240803"
+#define PROGRAM_NAME      "hootswitch-v20240803"
+
+#define DEFAULT_STACK     configMINIMAL_STACK_SIZE
+#define DEFAULT_PRIORITY  (tskIDLE_PRIORITY + 1U)
 
 static void init_hardware(void)
 {
@@ -80,20 +86,18 @@ int main(void)
 	driver_init();
 	computer_start();
 
-	uint32_t sw_cnt = 0;
-	while (1) {
-		host_poll();
-		computer_poll();
-		handler_poll();
-		driver_poll();
+	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
+	xTaskCreate(driver_task, "driver", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
+	xTaskCreate(handler_task, "handler", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
+	xTaskCreate(host_task, "host", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
+//	xTaskCreate(button_task, "button", DEFAULT_STACK,
+//			NULL, DEFAULT_PRIORITY, NULL);
 
-		if (! gpio_get(SWITCH_PIN)) {
-			sw_cnt++;
-		} else {
-			if (sw_cnt > 3) {
-				computer_switch(255);
-				sw_cnt = 0;
-			}
-		}
+	while (true) {
+		vTaskStartScheduler();
 	}
 }

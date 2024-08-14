@@ -161,6 +161,6 @@ bool driver_register(uint8_t *dev_id, dev_driver *driver);
 
 bool driver_get(uint8_t dev_id, dev_driver **driver);
 void driver_init(void); // see .c file for details
-void driver_poll(void);
+void driver_task(void *parameters);
 
 #endif /* __DRIVER_H__ */

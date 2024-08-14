@@ -119,11 +119,13 @@ host_err host_readdress(void);
  */
 void host_init(void);
 
-/**
- * Called as part of periodic processing to send data responses to the
- * handlers. Users should not call this function. It _must_ only be called from
- * process context.
- */
+// TEMPORARY
 void host_poll(void);
+
+/**
+ * Task responsible for processing data responses to the handlers. Users should
+ * not call this function.
+ */
+void host_task(void *parameters);
 
 #endif /* __HOST_H__ */

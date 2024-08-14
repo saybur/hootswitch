@@ -67,11 +67,13 @@ void handler_init(void)
 	mouse_init();
 }
 
-void handler_poll(void)
+void handler_task(__unused void *parameters)
 {
-	for (uint8_t i = 0; i < handler_list_count; i++) {
-		if (handler_list[i].poll_func != NULL) {
-			handler_list[i].poll_func();
+	while (true) {
+		for (uint8_t i = 0; i < handler_list_count; i++) {
+			if (handler_list[i].poll_func != NULL) {
+				handler_list[i].poll_func();
+			}
 		}
 	}
 }

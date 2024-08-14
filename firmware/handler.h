@@ -153,6 +153,6 @@ bool handler_register(ndev_handler *handler);
 
 bool handler_get(uint8_t id, ndev_handler **handler);
 void handler_init(void); // see .c file for details
-void handler_poll(void);
+void handler_task(void *parameters);
 
 #endif /* __HANDLER_H__ */

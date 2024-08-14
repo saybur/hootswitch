@@ -842,3 +842,8 @@ void host_poll(void)
 		host_cmd(dev, COMMAND_TALK_0, NULL, NULL, 0);
 	}
 }
+
+void host_task(__unused void *parameters)
+{
+	while(true) host_poll();
+}

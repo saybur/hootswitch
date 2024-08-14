@@ -41,6 +41,6 @@ bool computer_switch(uint8_t target);
 
 void computer_init(void);
 void computer_start(void);
-void computer_poll(void);
+void computer_task(void *parameters);
 
 #endif /* __COMPUTER_H__ */

@@ -846,7 +846,7 @@ bool computer_switch(uint8_t target)
 	return true;
 }
 
-void computer_poll(void)
+static void computer_poll(void)
 {
 	while (queue_count) {
 		volatile comp_command *q = &(queue[queue_tail]);
@@ -917,4 +917,9 @@ void computer_poll(void)
 			dbg("} got %d", dcnt);
 		}
 	}
+}
+
+void computer_task(__unused void *parameters)
+{
+	while (true) computer_poll();
 }
