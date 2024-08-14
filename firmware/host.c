@@ -791,8 +791,8 @@ void host_poll(void)
 				switch (queue[idx].type) {
 				case TYPE_TALK:
 					if (hndl->talk_func
-							&& ! (queue[idx].length == 0
-									&& ! hndl->accept_noop_talks)) {
+							&& (queue[idx].length > 0
+									|| hndl->accept_noop_talks)) {
 						hndl->talk_func(
 								queue[idx].device,
 								queue[idx].error,

@@ -44,13 +44,13 @@
  *
  * The functions to implement are as follows.
  *
+ * - void reset_func(void)
  * - bool interview_func(ndev_info *info, uint8_t *err)
  * - void assign_func(ndev_info *info, uint8_t dev)
- * - void talk_func(uint8_t dev, host_err err, uint16_t cid, uint8_t reg,
+ * - void talk_func(uint8_t dev, host_err err, uint32_t cid, uint8_t reg,
  *                  uint8_t *data, uint8_t data_len)
- * - void listen_func(uint8_t dev, host_err err, uint16_t cid, uint8_t reg)
- * - void flush_func(uint8_t dev, host_err err, uint16_t cid)
- * - void reset_func(void)
+ * - void listen_func(uint8_t dev, host_err err, uint32_t cid, uint8_t reg)
+ * - void flush_func(uint8_t dev, host_err err, uint32_t cid)
  * - void poll(void)
  *
  * These share common parameters:
@@ -78,27 +78,24 @@
  *   to startup defaults.
  * - interview_func is called with information about a device, asking the
  *   handler to give a yes/no answer to whether it should be assigned this
- *   device. Simpler handlers can just check the ADB "device handler ID" (DHID)
+ *   device. Simpler handlers can just check the ADB "device handler ID" (DHI)
  *   to answer the question. More compliated handlers may want to query the
- *   device and see if it accepts a different DHID; if that is done, be sure to
+ *   device and see if it accepts a different DHI; if that is done, be sure to
  *   update the struct members appropriately. Return true to take control of
  *   the device, false otherwise. Return a nonzero value in the int pointer if
  *   a malfunction occurs that should block further use of the device by other
  *   handlers.
  * - assign_func is called to grant control of a particular device to a
- *   handler. The handler will be called back with any information from this
- *   device. If you set `enable_srq` the SRQ flag will be automatically updated
- *   once this call is completed (not required, you can do it yourself if you
- *   want).
+ *   handler. Following this, the handler will be called back with any
+ *   information from this device.
  * - talk_func is called whenever the device has returned data for a
  *   Talk Register command. If you set `accept_noop_talks` to true, this will
  *   be called with a length of 0 whenever a no-op talk occurs, which can be
  *   frequent depending on the device. If false this is only called when there
  *   is data to be processed.
- * - [n] listen_func is called to fetch data when the system is ready to send
- *   the command to the device, during Tlt. This must return quickly to avoid
- *   problems. Set the data in the array and the length you want to send.
- * - [n] flush_func is called in response to a completed Flush command.
+ * - [n] listen_func is called back to inform the handler that previously-
+ *   submitted Listen data has been sent to the remote device.
+ * - [n] flush_func as above for completed Flush command.
  * - [n] poll_func is called periodically to give time for your handler to
  *   do whatever it wants. This is cooperative, do not perform excessive
  *   processing here if you can avoid it. See the driver notes for details,
@@ -121,7 +118,6 @@ typedef struct {
 typedef struct {
 	const char *name;
 	bool accept_noop_talks;
-	bool enable_srq;
 	void (*reset_func)(void);
 	bool (*interview_func)(volatile ndev_info*, uint8_t*);
 	void (*assign_func)(volatile ndev_info*, uint8_t);
