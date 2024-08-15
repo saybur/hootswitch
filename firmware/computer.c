@@ -24,6 +24,9 @@
 #include "hardware/dma.h"
 #include "hardware/timer.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "bus.pio.h"
 #include "buzzer.h"
 #include "computer.h"
@@ -134,6 +137,7 @@ const uint8_t randt[] = {
 	0x0E, 0x82, 0x74, 0x41, 0x21, 0x3D, 0xDC, 0x87
 };
 
+static TaskHandle_t task_handle = NULL;
 static volatile uint8_t active_computer = 255;
 static computer_t computers[COMPUTER_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
@@ -174,12 +178,18 @@ static bool queue_add(uint8_t *idx, uint8_t c)
 	*idx = (queue_tail + queue_count) & QUEUE_MASK;
 	queue_count++;
 
-	// insert the basic data before returning
+	// insert the basic data
 	queue[*idx].device = computers[c].device;
 	queue[*idx].driver = computers[c].devices[queue[*idx].device].driver;
 	queue[*idx].comp = c;
 	queue[*idx].type = computers[c].command_type;
 	queue[*idx].reg = computers[c].reg;
+
+	// wake up the dispatcher
+	if (task_handle != NULL) {
+		vTaskNotifyGiveFromISR(task_handle, NULL);
+	}
+
 	return true;
 }
 
@@ -533,6 +543,9 @@ static void computer_gpio_isr(void)
 				computers[i].dbg_rst++;
 				computers[i].phase = PHASE_IDLE;
 				computers[i].status = STATUS_RESET;
+				if (task_handle != NULL) {
+					vTaskNotifyGiveFromISR(task_handle, NULL);
+				}
 			} else {
 				// start command processing
 				dev_pio_command_start(i);
@@ -921,5 +934,9 @@ static void computer_poll(void)
 
 void computer_task(__unused void *parameters)
 {
-	while (true) computer_poll();
+	task_handle = xTaskGetCurrentTaskHandle();
+	while (true) {
+		ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+		computer_poll();
+	}
 }

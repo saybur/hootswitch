@@ -22,6 +22,9 @@
 #include "hardware/dma.h"
 #include "hardware/timer.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "bus.pio.h"
 #include "debug.h"
 #include "hardware.h"
@@ -194,6 +197,7 @@ static uint8_t parse_rx_bit_data(volatile uint8_t *data, uint8_t bits)
  * ----------------------------------------------------------------------------
  */
 
+static TaskHandle_t task_handle = NULL;
 static volatile bool idle_poll;
 static volatile host_phase phase = HOST_IDLE;
 static volatile uint16_t timeout;
@@ -212,8 +216,12 @@ static inline void host_stop_pio(void)
 // generic setup for calling back into the timer when a command completes
 static inline void host_cmd_complete(void)
 {
+	queue[cmd_idx].state = CMD_DONE;
 	phase = HOST_IDLE;
 	timer_hw->alarm[HOST_TIMER] = time_us_32() + TYP_CMD_GAP;
+	if (task_handle != NULL) {
+		vTaskNotifyGiveFromISR(task_handle, NULL);
+	}
 }
 
 /*
@@ -274,7 +282,6 @@ static void host_timer(void)
 		default:
 			// should only happen if the line sticks low, should be rare
 			host_stop_pio();
-			queue[cmd_idx].state = CMD_DONE;
 			queue[cmd_idx].error = HOSTERR_LINE_STUCK;
 			host_cmd_complete();
 	}
@@ -333,7 +340,6 @@ static void host_pio_isr(void)
 			default:
 				// no data transfer required
 				host_stop_pio();
-				queue[cmd_idx].state = CMD_DONE;
 				host_cmd_complete();
 			}
 			break;
@@ -347,19 +353,16 @@ static void host_pio_isr(void)
 			queue[cmd_idx].length = len;
 			if (len == 0) queue[cmd_idx].error = HOSTERR_TIMEOUT;
 
-			queue[cmd_idx].state = CMD_DONE;
 			host_cmd_complete();
 			break;
 
 		case HOST_LISTEN:
 			host_stop_pio();
-			queue[cmd_idx].state = CMD_DONE;
 			host_cmd_complete();
 			break;
 
 		default:
 			host_stop_pio();
-			queue[cmd_idx].state = CMD_DONE;
 			queue[cmd_idx].error = HOSTERR_BAD_STATE;
 			host_cmd_complete();
 	}
@@ -822,5 +825,9 @@ void host_poll(void)
 
 void host_task(__unused void *parameters)
 {
-	while(true) host_poll();
+	task_handle = xTaskGetCurrentTaskHandle();
+	while (true) {
+		ulTaskNotifyTake(pdFALSE, 5);
+		host_poll();
+	}
 }

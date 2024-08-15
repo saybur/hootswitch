@@ -31,10 +31,11 @@
 #include "hardware.h"
 #include "led.h"
 
-#define PROGRAM_NAME      "hootswitch-v20240803"
+#define PROGRAM_NAME       "hootswitch-v20240803"
 
-#define DEFAULT_STACK     configMINIMAL_STACK_SIZE
-#define DEFAULT_PRIORITY  (tskIDLE_PRIORITY + 1U)
+#define DEFAULT_STACK      configMINIMAL_STACK_SIZE
+#define DEFAULT_PRIORITY   (tskIDLE_PRIORITY + 1U)
+#define DISPATCH_PRIORITY  (tskIDLE_PRIORITY + 2U)
 
 static void init_hardware(void)
 {
@@ -87,13 +88,13 @@ int main(void)
 	computer_start();
 
 	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
-			NULL, DEFAULT_PRIORITY, NULL);
+			NULL, DISPATCH_PRIORITY, NULL);
 	xTaskCreate(driver_task, "driver", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(handler_task, "handler", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(host_task, "host", DEFAULT_STACK,
-			NULL, DEFAULT_PRIORITY, NULL);
+			NULL, DISPATCH_PRIORITY, NULL);
 //	xTaskCreate(button_task, "button", DEFAULT_STACK,
 //			NULL, DEFAULT_PRIORITY, NULL);
 
