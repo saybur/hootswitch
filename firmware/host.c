@@ -63,7 +63,6 @@ typedef enum {
 	HOST_IDLE,
 	HOST_COMMAND,
 	HOST_TALK,
-	HOST_LISTEN_TLT,
 	HOST_LISTEN
 } host_phase;
 
@@ -274,39 +273,18 @@ static void host_timer(void)
 			timer_hw->alarm[HOST_TIMER] = time_us_32() + timeout;
 			break;
 
-		case HOST_COMMAND:
-		case HOST_TALK:
+		default:
 			// should only happen if the line sticks low, should be rare
 			host_stop_pio();
 			queue[cmd_idx].state = CMD_DONE;
 			queue[cmd_idx].error = HOSTERR_LINE_STUCK;
 			host_cmd_complete();
-			break;
-
-		case HOST_LISTEN_TLT:
-			// at end of Tlt, start transmission
-			pio_sm_set_enabled(HOST_PIO, pio_sm, true);
-			// add timeout safety, calculated in PIO ISR
-			timer_hw->alarm[HOST_TIMER] = time_us_32() + timeout;
-			phase = HOST_LISTEN;
-
-			break;
-		case HOST_LISTEN:
-			// line locked up
-			host_stop_pio();
-			queue[cmd_idx].state = CMD_DONE;
-			queue[cmd_idx].error = HOSTERR_LINE_STUCK;
-			host_cmd_complete();
-
-			break;
 	}
 }
 
 // ISR callback for the PIO state machine
 static void host_pio_isr(void)
 {
-	// unconditionally stop PIO
-	host_stop_pio();
 	// cancel fallback alarm / make sure it isn't waiting to fire
 	timer_hw->armed = 1U << HOST_TIMER;
 	timer_hw->intr = 1U << HOST_TIMER;
@@ -324,6 +302,7 @@ static void host_pio_isr(void)
 			pio_sm_config c;
 			switch (queue[cmd_idx].type) {
 			case TYPE_TALK:
+				host_stop_pio();
 				host_pio_load_tx(false);
 
 				bus_rx_host_pio_config(&c, pio_offset, A_DI_PIN);
@@ -343,22 +322,19 @@ static void host_pio_isr(void)
 				timer_hw->alarm[HOST_TIMER] = time_us_32() + RX_MAX_TIMEOUT;
 				break;
 			case TYPE_LISTEN:
-				// start timer immediately to avoid missing the window
-				timer_hw->alarm[HOST_TIMER] = time_us_32() + LISTEN_TX_WAIT;
-
-				// setup for sending
-				bus_tx_host_pio_config(&c, pio_offset, A_DO_PIN, A_DI_PIN);
-				pio_sm_init(HOST_PIO, pio_sm, pio_offset, &c);
+				pio_interrupt_clear(HOST_PIO, pio_sm);
+				// only need to fill TX FIFO, rest will happen automatically
 				for (uint8_t i = 0; i < queue[cmd_idx].length; i++) {
 					bus_tx_host_put(HOST_PIO, pio_sm, queue[cmd_idx].data[i]);
 				}
-				timeout = 100 + 800 * queue[cmd_idx].length + 250;
-
-				// timer firing will start transfer
-				phase = HOST_LISTEN_TLT;
+				// set a timeout to be on the safe side
+				phase = HOST_LISTEN;
+				timer_hw->alarm[HOST_TIMER] = time_us_32()
+						+ 250 + 800 * queue[cmd_idx].length + 250;
 				break;
 			default:
 				// no data transfer required
+				host_stop_pio();
 				queue[cmd_idx].state = CMD_DONE;
 				host_cmd_complete();
 			}
@@ -366,6 +342,7 @@ static void host_pio_isr(void)
 
 		case HOST_TALK:
 			// normal end of Talk, either timeout or data response
+			host_stop_pio();
 			uint8_t dma_remain = dma_channel_hw_addr(dma_chan)->transfer_count;
 			dma_channel_abort(dma_chan);
 			uint8_t len = DMA_MAX_BITS - dma_remain;
@@ -377,11 +354,13 @@ static void host_pio_isr(void)
 			break;
 
 		case HOST_LISTEN:
+			host_stop_pio();
 			queue[cmd_idx].state = CMD_DONE;
 			host_cmd_complete();
 			break;
 
 		default:
+			host_stop_pio();
 			queue[cmd_idx].state = CMD_DONE;
 			queue[cmd_idx].error = HOSTERR_BAD_STATE;
 			host_cmd_complete();

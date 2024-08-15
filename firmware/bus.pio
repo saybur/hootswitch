@@ -38,30 +38,36 @@
 ; ------------ Host Implementation -------------------------------------------
 ; ----------------------------------------------------------------------------
 
-; Writes command or data bits from the TX FIFO to the bus, including the
-; preable/postable. This version is used when acting as a host. It is similar
-; to the device implementation except for the following:
-;
-; 1) The start will be attention with sync _or_ '1' start bit, depending on
-;    what offset is used,
-; 2) Collision checking is not applied since hosts do not need it.
-;
-; Otherwise the notes in the other version apply. The design of these is quite
-; similar so you could potentially merge them; on Hootswitch these exist on
-; different PIO units, so the differences help shave off a few instructions.
+; Writes a command to the bus, including the preable/postable, with a following
+; data phase if not stopped by the CPU.
 ;
 ; This is used both during the command phase and when issuing a Listen Register
-; data operation. The normal offset is the '1' bit for sending data. Starting
-; at (offset + 2) gets attention/sync instead for commands.
+; data operation. A Listen operation will start automatically if the CPU does
+; not stop the PIO state machine after the first IRQ fire. You need to provide
+; an initial TX FIFO value for the length of the low pulse. For regular
+; attention a value of 15 is appropriate ((15+1)*50=800). To make this a reset
+; pulse use 59 instead.
 ;
-; For attention/sync, you need to provide an initial TX FIFO value for the
-; length of the low pulse. For regular attention a value of 15 is appropriate
-; ((15+1)*50=800). To make this a reset pulse use 59 instead.
+; Starting at (offset + 2) gets attention/sync for commands and should be the
+; normal way to invoke this in almost all cases.
 ;
-; All versions of this will sample the line after releasing it the final time.
-; If it is still detected low, rel IRQ+4 is set and this waits until the line
-; goes high again before returning. This is useful to detect SRQ during
-; commands and (far less likely) finding spurious line errors.
+; The general flow is as follows:
+;
+; 1) Issue attention/reset, then the sync pulse,
+; 2) Issue the command,
+; 3) Sense if a SRQ is seen (if it is, IRQ+4 is set)
+; 4) Set IRQ+0
+; 5) Wait for Tlt; during this time, the CPU needs to respond to IRQ+0 and
+;    determine if a follow-on Listen (TX) step is needed. If it is, the CPU
+;    needs to fill the TX FIFO at this point (not earlier) with appropriate
+;    data. If Listen is not needed (Talk, Flush, SendReset) the CPU needs to
+;    stop the state machine.
+; 6) Assuming Listen data, this will send '1', the data, then the stop bit.
+; 7) It will perform a pointless SRQ sample, then trigger IRQ+0 again. The
+;    CPU will need to stop the SM within the "fake Tlt" to prevent an error.
+;
+; This is a bit convoluted but allows for a more reliable Tlt than using a
+; separate timer.
 
 .program bus_tx_host
 .side_set 1
@@ -90,7 +96,12 @@ txh_be:
 	irq 4 rel       side 0      ; otherwise set the SRQ detection flag
 	wait 1 pin 0    side 0      ; and wait for the line to go high
 txh_e:
-	irq wait 0 rel  side 0      ; done
+	irq 0 rel       side 0      ; notify CPU stage is complete
+
+	set y, 15       side 0      ; setup for 170us (SRQ) or 215us (non-SRQ) wait
+txh_w:
+	jmp y-- txh_w   side 0 [1]  ; wait, then autowrap to start
+
 
 % c-sdk {
 static inline void bus_tx_host_pio_config(pio_sm_config *c,
