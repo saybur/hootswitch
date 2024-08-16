@@ -17,10 +17,10 @@
 
 #include "pico/stdlib.h"
 
-#include "../computer.h"
-#include "../debug.h"
-#include "../driver.h"
-#include "../handler.h"
+#include "computer.h"
+#include "debug.h"
+#include "driver.h"
+#include "handler.h"
 
 #include "keyboard.h"
 

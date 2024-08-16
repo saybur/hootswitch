@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.13)
 
 set(PICO_BOARD pico_w)
 set(PICO_PLATFORM rp2040)
@@ -18,8 +18,9 @@ pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 # for FreeRTOS to find the configuration file
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
+add_subdirectory(drivers)
+
 target_sources(hootswitch PRIVATE
-		drivers/keyboard.c drivers/mouse.c
 		buzzer.c computer.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
 		)
 
