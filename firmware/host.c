@@ -379,15 +379,6 @@ host_err host_reset_bus(void)
 {
 	dbg("host reset bus");
 
-	// send a reset to all handlers
-	for (uint8_t i = 0; i < handler_count(); i++) {
-		ndev_handler *handler;
-		handler_get(i, &handler);
-		if (handler != NULL) {
-			handler->reset_func();
-		}
-	}
-
 	// drain the queue and wait for the system to go idle
 	idle_poll = false;
 	queue_count = 0;
@@ -523,15 +514,6 @@ static host_err host_reset_addresses(void)
 
 static host_err host_handle_setup(void)
 {
-	// perform a reset on all handlers
-	for (uint8_t i = 0; i < handler_count(); i++) {
-		ndev_handler *handler;
-		handler_get(i, &handler);
-		if (handler != NULL) {
-			handler->reset_func();
-		}
-	}
-
 	// scan the devices and assign handlers
 	for (uint8_t hid = handler_count(); hid > 0; hid--) {
 		ndev_handler *handler;
@@ -605,9 +587,6 @@ host_err host_reset_devices(void)
 		dbg_err("disabling host, no devices!");
 		return HOSTERR_NO_DEVICES;
 	}
-
-	// re-enable general polling of Talk 0
-	idle_poll = true;
 }
 
 void host_init(void)
@@ -825,6 +804,7 @@ void host_poll(void)
 
 void host_task(__unused void *parameters)
 {
+	idle_poll = true;
 	task_handle = xTaskGetCurrentTaskHandle();
 	while (true) {
 		ulTaskNotifyTake(pdFALSE, 5);

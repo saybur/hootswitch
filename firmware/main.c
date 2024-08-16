@@ -89,10 +89,6 @@ int main(void)
 
 	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
 			NULL, DISPATCH_PRIORITY, NULL);
-	xTaskCreate(driver_task, "driver", DEFAULT_STACK,
-			NULL, DEFAULT_PRIORITY, NULL);
-	xTaskCreate(handler_task, "handler", DEFAULT_STACK,
-			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(host_task, "host", DEFAULT_STACK,
 			NULL, DISPATCH_PRIORITY, NULL);
 //	xTaskCreate(button_task, "button", DEFAULT_STACK,

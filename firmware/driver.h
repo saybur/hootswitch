@@ -62,7 +62,7 @@
  * Notes for each function:
  *
  * - `reset_func` is called in response to a reset pulse. Reset state (and DHI)
- *   to defaults.
+ *   to defaults as appropriate.
  * - [n] `switch_func` is called to indicate the active computer the user has
  *   picked is being switched to the one provided.
  * - [n] `talk_func` is called after a Talk command has completed, letting the
@@ -73,21 +73,17 @@
  * - [n] `flush_func` is called in response to a Flush command.
  * - (!) `get_handle_func` should return the currently assigned DHI. This can
  *   be either the default _or_ a DHI from set_handle_func that was actually
- *   accepted.
+ *   accepted. Not setting the value will result in a DHI of 0x00, which
+ *   the remote system will likely interpret as a failed self-test or error.
  * - (!) [n] `set_handle_func` offers a new DHI to assign. If the handle is
  *   supported it should be assigned internally and then returned each time
  *   from get_handle_func, otherwise leave the old handle alone.
- * - [n] `poll_func` is called periodically to give time for your driver to do
- *   whatever it wants. This is cooperative, do not perform excessive
- *   processing here if you can avoid it. If you _really_ need processing time
- *   core1 is available for your use, but it will be your responsibility to
- *   figure out the various challenges associated with multicore usage on the
- *   Pico! :)
  *
  * The functions marked with (!) above are called from an interrupt. Ensure
  * these return _very quickly_, just update a relevant variable and provide
- * it back, leaving processing to a later non-interrupt call. The functions
- * marked with [n] may be NULL.
+ * it back, leaving processing to a later non-interrupt call. All other
+ * functions will be called from the computer message dispatching task. The
+ * functions marked with [n] may be NULL.
  *
  * There is only one "active" computer at any time, the others are inactive. It
  * is up to the driver to decide how to handle active vs inactive computer. For
@@ -113,6 +109,7 @@
  */
 
 typedef struct {
+	const char *name;     // name of driver for debugging purposes
 	uint8_t default_addr; // default bus address to be used at reset
 	void (*reset_func)(uint8_t, uint8_t);
 	void (*switch_func)(uint8_t);
@@ -121,7 +118,6 @@ typedef struct {
 	void (*flush_func)(uint8_t, uint8_t);
 	void (*get_handle_func)(uint8_t, uint8_t, uint8_t*);
 	void (*set_handle_func)(uint8_t, uint8_t, uint8_t);
-	void (*poll_func)(void);
 } dev_driver;
 
 /*
@@ -161,6 +157,5 @@ bool driver_register(uint8_t *dev_id, dev_driver *driver);
 
 bool driver_get(uint8_t dev_id, dev_driver **driver);
 void driver_init(void); // see .c file for details
-void driver_task(void *parameters);
 
 #endif /* __DRIVER_H__ */

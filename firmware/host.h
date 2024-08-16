@@ -67,16 +67,13 @@ host_err host_cmd(uint8_t dev, uint8_t cmd, uint32_t *id,
 host_err host_register(ndev_handler *handler);
 
 /**
- * Executes a bus reset command on the host side.
+ * Executes a bus reset command on the host side. This should only be done
+ * during initial device startup.
  *
  * This will disable async commands and force a reset. Devices may take some
  * time to come out of reset and begin accepting commands again. This will
  * return once the command completes. Wait an appropriate time before calling
  * host_reset_devices() to finish the reset process.
- *
- * This runs exclusively in polling mode and will hog the CPU. While I've tried
- * to make it safe to execute post-boot, this should generally only be called
- * during startup.
  *
  * @return      any errors.
  */
@@ -84,15 +81,12 @@ host_err host_reset_bus(void);
 
 /**
  * Reconfigures all devices following a bus reset command on the host side.
+ * This should only be done during initial device startup.
  *
  * This will perform the "address shuffle" required by ADB following a reset.
  * You must call the above command prior to calling this one, with an
  * appropriate delay included to avoid devices still being stuck in reset when
  * this begins execution.
- *
- * This runs exclusively in polling mode and will hog the CPU. While I've tried
- * to make it safe to execute post-boot, this should generally only be called
- * during startup.
  *
  * @return      any errors.
  */

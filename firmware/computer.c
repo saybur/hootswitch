@@ -387,7 +387,7 @@ static bus_phase isr_command_execute(uint8_t i)
 					((computers[i].srq_en[dev]) ? 0x20 : 0x00)
 					| (0x40) // exceptional event, always '1' for us
 					| (computers[i].devices[dev].address));
-			uint8_t hndl;
+			uint8_t hndl = 0;
 			computers[i].devices[dev].driver->get_handle_func(i, dev, &hndl);
 			bus_tx_dev_put(COMPUTER_PIO, i, hndl);
 			return PHASE_TALK;
@@ -840,14 +840,13 @@ bool computer_switch(uint8_t target)
 		led_machine(active_computer, LED_DETECT);
 	}
 
-	// switch all the drivers over
-	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
-		uint8_t dcnt = driver_count_devices();
-		for (uint8_t d = 0; d < dcnt; d++) {
-			dev_driver *drv = computers[i].devices[d].driver;
-			if (drv->switch_func) {
-				drv->switch_func(next);
-			}
+	// switch the drivers over
+	dev_driver *drv;
+	uint8_t dcnt = driver_count_devices();
+	for (uint8_t d = 0; d < dcnt; d++) {
+		driver_get(d, &drv);
+		if (drv->switch_func) {
+			drv->switch_func(next);
 		}
 	}
 

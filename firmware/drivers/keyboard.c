@@ -54,13 +54,7 @@ static dev_driver keyboard_driver = {
 	.flush_func = NULL,
 	.get_handle_func = drvr_get_handle,
 	.set_handle_func = NULL,
-	.poll_func = NULL
 };
-
-static void hndl_reset(void)
-{
-	// TODO implement
-}
 
 static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
 {
@@ -96,21 +90,14 @@ static void hndl_flush(uint8_t dev, uint8_t err, uint32_t cid)
 	// TODO implement
 }
 
-static void hndl_poll(void)
-{
-	// TODO implement
-}
-
 static ndev_handler keyboard_handler = {
 	.name = "kbd",
 	.accept_noop_talks = false,
-	.reset_func = hndl_reset,
 	.interview_func = hndl_interview,
 	.assign_func = hndl_assign,
 	.talk_func = hndl_talk,
 	.listen_func = hndl_listen,
 	.flush_func = hndl_flush,
-	.poll_func = hndl_poll
 };
 
 void keyboard_init(void)

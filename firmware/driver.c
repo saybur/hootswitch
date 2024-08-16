@@ -65,14 +65,3 @@ void driver_init(void)
 	 * ------------------------------------------------------------------------
 	 */
 }
-
-void driver_task(__unused void *parameters)
-{
-	while (true) {
-		for (uint8_t i = 0; i < device_list_count; i++) {
-			if (device_list[i]->poll_func) {
-				device_list[i]->poll_func();
-			}
-		}
-	}
-}

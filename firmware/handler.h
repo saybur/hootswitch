@@ -32,8 +32,7 @@
  * 0) handler_init() is called. Add a call there to register a `ndev_handler`
  *    with host_register().
  * 1) The host resets all native devices and readdresses them, storing the
- *    information in `ndev_info` structs. The `reset_func` of all handlers is
- *    called.
+ *    information in `ndev_info` structs.
  * 2) The host goes through the handlers in reverse insertion order. The
  *    handlers will be interviewed to see if they want the device. If the
  *    device accepts it, that handler will be called with device information
@@ -44,18 +43,16 @@
  *
  * The functions to implement are as follows.
  *
- * - void reset_func(void)
  * - bool interview_func(ndev_info *info, uint8_t *err)
- * - void assign_func(ndev_info *info, uint8_t dev)
- * - void talk_func(uint8_t dev, host_err err, uint32_t cid, uint8_t reg,
+ * - void assign_func(ndev_info *info, uint8_t hdev)
+ * - void talk_func(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
  *                  uint8_t *data, uint8_t data_len)
- * - void listen_func(uint8_t dev, host_err err, uint32_t cid, uint8_t reg)
- * - void flush_func(uint8_t dev, host_err err, uint32_t cid)
- * - void poll(void)
+ * - void listen_func(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg)
+ * - void flush_func(uint8_t hdev, host_err err, uint32_t cid)
  *
  * These share common parameters:
  *
- * - `dev` is a host device ID value that uniquely identifies a specific piece
+ * - `hdev` is a host device ID value that uniquely identifies a specific piece
  *   of hardware (it is distinct from the device ADB address). Each call
  *   receives this to help you keep track of multiple devices.
  * - `err` receives any errors that happened during execution of the command
@@ -71,11 +68,6 @@
  *
  * Notes for each:
  *
- * - reset_func is called whenever a host-side reset occurs. This will
- *   always happen at least once at the beginning of the program. It may happen
- *   again if someone resets the host later. When received, drop all devices
- *   you own, immediately cease sending commands, and reset your internal state
- *   to startup defaults.
  * - interview_func is called with information about a device, asking the
  *   handler to give a yes/no answer to whether it should be assigned this
  *   device. Simpler handlers can just check the ADB "device handler ID" (DHI)
@@ -96,13 +88,15 @@
  * - [n] listen_func is called back to inform the handler that previously-
  *   submitted Listen data has been sent to the remote device.
  * - [n] flush_func as above for completed Flush command.
- * - [n] poll_func is called periodically to give time for your handler to
- *   do whatever it wants. This is cooperative, do not perform excessive
- *   processing here if you can avoid it. See the driver notes for details,
- *   this works identically.
  *
- * All functions above are invoked from the process context. The functions
- * marked with [n] may be NULL.
+ * All functions above are invoked from the handler task. The functions marked
+ * with [n] may be NULL.
+ *
+ * Most handlers will also be drivers and thus must deal with the potential for
+ * concurrent modification from calls to their driver functions. There are
+ * several ways to get around this problem that will depend on the driver, but
+ * generally using a Pico SDK mutex will be the most straightforward. See
+ * the SDK documentation for details.
  */
 
 // reflects information from register 3
@@ -118,13 +112,11 @@ typedef struct {
 typedef struct {
 	const char *name;
 	bool accept_noop_talks;
-	void (*reset_func)(void);
 	bool (*interview_func)(volatile ndev_info*, uint8_t*);
 	void (*assign_func)(volatile ndev_info*, uint8_t);
 	void (*talk_func)(uint8_t, host_err, uint32_t, uint8_t, uint8_t*, uint8_t);
 	void (*listen_func)(uint8_t, host_err, uint32_t, uint8_t);
 	void (*flush_func)(uint8_t, host_err, uint32_t);
-	void (*poll_func)(void);
 } ndev_handler;
 
 // maximum number of simultaneous handlers supported
@@ -153,6 +145,5 @@ bool handler_register(ndev_handler *handler);
 
 bool handler_get(uint8_t id, ndev_handler **handler);
 void handler_init(void); // see .c file for details
-void handler_task(void *parameters);
 
 #endif /* __HANDLER_H__ */
