@@ -109,6 +109,11 @@
  */
 
 typedef struct {
+	uint8_t length;
+	uint8_t data[8];
+} talk_data_type;
+
+typedef struct {
 	const char *name;     // name of driver for debugging purposes
 	uint8_t default_addr; // default bus address to be used at reset
 	void (*reset_func)(uint8_t, uint8_t);
