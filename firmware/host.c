@@ -475,6 +475,7 @@ static host_err host_reset_addresses(void)
 			}
 
 			// now treat the device as permanent and add to our records
+			devices[device_count].hdev = device_count;
 			devices[device_count].address_def = base_addr;
 			devices[device_count].address_cur = cur_addr;
 			devices[device_count].dhid_def = lo;
@@ -512,6 +513,60 @@ static host_err host_reset_addresses(void)
 	return HOSTERR_OK;
 }
 
+// callback provided to interviewers to try and change a device's DHID
+static uint8_t handle_change_devid;
+static bool host_handle_change(uint8_t dhid)
+{
+	// block special DHID values
+	if (dhid == 0x00 || dhid >= 0xFD) {
+		dbg("    veto %d", dhid);
+		return false;
+	}
+
+	volatile ndev_info *device = &(devices[handle_change_devid]);
+	uint8_t addr = device->address_cur;
+	uint8_t reg3_hi = 0;
+	uint8_t device_dhid = 0;
+
+	// get current values
+	dbg("    id %d dhid to %d?", handle_change_devid, dhid);
+	host_err err;
+	if (err = reg3_sync_talk(addr, &reg3_hi, &device_dhid)) {
+		dbg_err("    id %d err T3!", handle_change_devid);
+		device->fault = true;
+		return false;
+	}
+	device->dhid_cur = device_dhid;
+	if (device_dhid == 0) {
+		dbg_err("    id %d bad DHID", handle_change_devid);
+		device->fault = true;
+		return false;
+	}
+
+	// try to reassign to the handler requested
+	if (err = reg3_sync_listen(addr, reg3_hi, dhid)) {
+		dbg_err("    id %d err L3!", handle_change_devid);
+		device->fault = true;
+		return false;
+	}
+
+	// was it accepted?
+	if (err = reg3_sync_talk(addr, &reg3_hi, &device_dhid)) {
+		dbg_err("    id %d err T3!", handle_change_devid);
+		device->fault = true;
+		return false;
+	}
+	device->dhid_cur = device_dhid;
+	if (device_dhid == 0) {
+		dbg_err("    id %d dhid fault", handle_change_devid);
+		device->fault = true;
+		return false;
+	}
+
+	dbg("    id %d dhid:%d", handle_change_devid, device_dhid);
+	return device_dhid == dhid;
+}
+
 static host_err host_handle_setup(void)
 {
 	// scan the devices and assign handlers
@@ -519,6 +574,10 @@ static host_err host_handle_setup(void)
 		ndev_handler *handler;
 		handler_get(hid - 1, &handler);
 		if (handler == NULL) continue;
+		if (handler->interview_func == NULL) {
+			dbg("  handler '%s' cannot interview", handler->name);
+			continue;
+		}
 
 		dbg("  handler '%s':", handler->name);
 		for (uint8_t did = 0; did < device_count; did++) {
@@ -530,15 +589,13 @@ static host_err host_handle_setup(void)
 			if (device->fault) continue;
 
 			// might be OK, check with the handler and see if they want it
-			uint8_t herr = 0;
-			bool res = handler->interview_func(device, &herr);
-			if (herr) {
-				dbg_err("    id %d bad interview (%d), skip", did, herr);
-				device->fault = true;
+			handle_change_devid = did;
+			bool res = handler->interview_func(device, host_handle_change);
+			if (device->fault) {
+				dbg_err("    id %d fault (%d), skip", did, device->fault);
 			} else if (res) {
-				dbg("    id %d accepted", did);
+				dbg("    id %d ok", did);
 				device_handlers[did] = handler;
-				handler->assign_func(device, did);
 			}
 		}
 	}
@@ -587,6 +644,8 @@ host_err host_reset_devices(void)
 		dbg_err("disabling host, no devices!");
 		return HOSTERR_NO_DEVICES;
 	}
+
+	return HOSTERR_OK;
 }
 
 void host_init(void)

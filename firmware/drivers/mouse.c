@@ -136,16 +136,13 @@ static dev_driver mouse_driver = {
  * ----------------------------------------------------------------------------
  */
 
-static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
+static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8_t))
 {
-	return info->address_def == 0x03
-			&& (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x02);
-}
+	if (mouse_count >= MAX_MICE) return false;
+	if (info->address_def != 0x03) return false;
+	if (! (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x02)) return false;
 
-static void hndl_assign(volatile ndev_info *info, uint8_t hdev)
-{
-	if (mouse_count >= MAX_MICE) return;
-	mice[mouse_count].hdev = hdev;
+	mice[mouse_count].hdev = info->hdev;
 	mice[mouse_count].sem = xSemaphoreCreateMutex();
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
 		mice[mouse_count].dhi[c] = DEFAULT_HANDLER;
@@ -154,6 +151,7 @@ static void hndl_assign(volatile ndev_info *info, uint8_t hdev)
 
 	driver_register(&mice[mouse_count].dev, &mouse_driver);
 	mouse_count++;
+	return true;
 }
 
 static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
@@ -198,7 +196,6 @@ static ndev_handler mouse_handler = {
 	.name = "mse",
 	.accept_noop_talks = false,
 	.interview_func = hndl_interview,
-	.assign_func = hndl_assign,
 	.talk_func = hndl_talk,
 	.listen_func = NULL,
 	.flush_func = NULL

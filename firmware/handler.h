@@ -70,17 +70,15 @@
  *
  * - interview_func is called with information about a device, asking the
  *   handler to give a yes/no answer to whether it should be assigned this
- *   device. Simpler handlers can just check the ADB "device handler ID" (DHI)
- *   to answer the question. More compliated handlers may want to query the
- *   device and see if it accepts a different DHI; if that is done, be sure to
- *   update the struct members appropriately. Return true to take control of
- *   the device, false otherwise. Return a nonzero value in the int pointer if
- *   a malfunction occurs that should block further use of the device by other
- *   handlers.
- * - assign_func is called to grant control of a particular device to a
- *   handler. Following this, the handler will be called back with any
- *   information from this device.
- * - talk_func is called whenever the device has returned data for a
+ *   device. Simpler handlers can just check the "device handler ID" (DHI)
+ *   value in the struct to answer the question. More compliated handlers may
+ *   want to query the device and see if it accepts a different DHI, which
+ *   can be done by calling the provided function, which will return true if
+ *   the proposed DHI was accepted, false otherwise (the struct will auto-
+ *   update with any new DHI value). Return true to take control of the device,
+ *   false otherwise. If a malfunction occurs that should block further use of
+ *   the device by other handlers set `fault` within the given struct.
+ * - talk_func is called whenever the device has returned data from a
  *   Talk Register command. If you set `accept_noop_talks` to true, this will
  *   be called with a length of 0 whenever a no-op talk occurs, which can be
  *   frequent depending on the device. If false this is only called when there
@@ -101,19 +99,19 @@
 
 // reflects information from register 3
 typedef struct {
+	uint8_t hdev;         // unique hardware ID (see above)
 	uint8_t address_def;  // default address at reset time
 	uint8_t address_cur;  // current address, don't change this!
 	uint8_t dhid_def;     // default device handler ID at reset time
 	uint8_t dhid_cur;     // current device handler ID
-	bool fault;           // true if the device is skipped due to HW issues
+	bool fault;           // set if the device should be skipped
 } ndev_info;
 
 // struct to submit for registration, see (long) description above.
 typedef struct {
 	const char *name;
 	bool accept_noop_talks;
-	bool (*interview_func)(volatile ndev_info*, uint8_t*);
-	void (*assign_func)(volatile ndev_info*, uint8_t);
+	bool (*interview_func)(volatile ndev_info*, bool (*handle_change)(uint8_t));
 	void (*talk_func)(uint8_t, host_err, uint32_t, uint8_t, uint8_t*, uint8_t);
 	void (*listen_func)(uint8_t, host_err, uint32_t, uint8_t);
 	void (*flush_func)(uint8_t, host_err, uint32_t);

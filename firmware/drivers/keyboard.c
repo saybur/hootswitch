@@ -151,19 +151,18 @@ static dev_driver keyboard_driver = {
  * ----------------------------------------------------------------------------
  */
 
-static bool hndl_interview(volatile ndev_info *info, uint8_t *err)
+static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8_t))
 {
-	return info->address_def == 0x02
-			&& (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x03);
-}
+	if (keyboard_count >= MAX_KEYBOARDS) return false;
+	if (info->address_def != 0x02) return false;
+	if (! (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x03)) return false;
 
-static void hndl_assign(volatile ndev_info *info, uint8_t hdev)
-{
-	if (keyboard_count >= MAX_KEYBOARDS) return;
-	keyboards[keyboard_count].hdev = hdev;
-
-	// TODO need to try assignment of handler 0x03
-
+	keyboards[keyboard_count].hdev = info->hdev;
+	if (info->dhid_cur == 0x03) {
+		keyboards[keyboard_count].extended = true;
+	} else {
+		keyboards[keyboard_count].extended = handle_change(0x03);
+	}
 	keyboards[keyboard_count].queue = xQueueCreate(
 			KEYBOARD_QUEUE_SIZE, sizeof(talk_data_type));
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
@@ -173,6 +172,7 @@ static void hndl_assign(volatile ndev_info *info, uint8_t hdev)
 
 	driver_register(&keyboards[keyboard_count].dev, &keyboard_driver);
 	keyboard_count++;
+	return true;
 }
 
 static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
@@ -196,7 +196,6 @@ static ndev_handler keyboard_handler = {
 	.name = "kbd",
 	.accept_noop_talks = false,
 	.interview_func = hndl_interview,
-	.assign_func = hndl_assign,
 	.talk_func = hndl_talk,
 	.listen_func = NULL,
 	.flush_func = NULL,
