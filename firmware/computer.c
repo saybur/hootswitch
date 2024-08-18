@@ -141,8 +141,6 @@ static TaskHandle_t task_handle = NULL;
 static uint8_t active_computer;
 static computer_t computers[COMPUTER_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
-
-// FIXME use this during Reg3 Talk
 static uint8_t rand_idx;
 
 /*
@@ -390,10 +388,12 @@ static bus_phase isr_command_execute(uint8_t i)
 		reg = computers[i].command & 0x3;
 		computers[i].reg = reg;
 		if (reg == 3) {
+			uint8_t rand_addr = randt[rand_idx++] & 0xF;
+			if (rand_idx >= sizeof(randt)) rand_idx = 0;
 			bus_tx_dev_put(COMPUTER_PIO, i,
 					((dev->srq_en) ? 0x20 : 0x00)
 					| (0x40) // exceptional event, always '1' for us
-					| (dev->address));
+					| rand_addr);
 			uint8_t hndl = 0;
 			dev->driver->get_handle_func(i, dev->ref, &hndl);
 			bus_tx_dev_put(COMPUTER_PIO, i, hndl);

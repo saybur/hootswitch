@@ -544,6 +544,7 @@ static bool host_handle_change(uint8_t dhid)
 	}
 
 	// try to reassign to the handler requested
+	reg3_hi = (reg3_hi & 0xF0) | (addr & 0xF);
 	if (err = reg3_sync_listen(addr, reg3_hi, dhid)) {
 		dbg_err("    id %d err L3!", handle_change_devid);
 		device->fault = true;
