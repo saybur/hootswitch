@@ -44,12 +44,12 @@ Also clone or download [FreeRTOS](https://github.com/FreeRTOS). The LTS release
 is likely fine. Set `FREERTOS_KERNEL_PATH` to the folder where
 `FreeRTOS-Kernel` is located via the above method.
 
-Once you have everything set up, build as follows.
+Once you have everything set up, build as follows from the root of the repo.
 
 ```
 mkdir -p build
 cd build
-cmake ..
+cmake ../firmware
 make
 ```
 
@@ -61,19 +61,22 @@ Reboot.
 Debugging
 ---------
 
+You will want to invoke `cmake` with `-DCMAKE_BUILD_TYPE=Debug`.
+
 [The official debugger](https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html)
 is dirt cheap and works reasonably well if you plan to develop on the firmware.
 It can be used as follows to upload without needing to fuss with the BOOTSEL
 button. Be in the `dialout` group to avoid needing `sudo` all over the place.
+OpenOCD can be started as follows.
 
 ```
-openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
-    -c "adapter speed 5000" -c "program blink.elf verify reset exit"
+openocd -c "set USE_CORE 0" -f interface/cmsis-dap.cfg -f target/rp2040.cfg \
+    -c "adapter speed 5000" -c "rp2040.core0 configure -rtos FreeRTOS"
 ```
 
-For a proper debugging session, start the OpenOCD server by omitting the last
-`-c` argument above. You will want to invoke `cmake` with
-`-DCMAKE_BUILD_TYPE=Debug` .
+See <https://github.com/raspberrypi/pico-sdk/issues/1622> for a discussion
+about `USE_CORE 0` above. The above is fine for now with the current state of
+development, which runs only on a single core anyway.
 
 In another terminal, run `gdb-multiarch hootswitch.elf`. Connect to the device
 with `target remote localhost:3333` (or automate this step via `~/.gdbinit`).
@@ -92,6 +95,7 @@ _most definitely_ not an authority on `gdb`):
 * `i r` prints registers.
 * `p X` prints variable X.
 * `p/x *0x0` prints in hex from the address, useful for peripheral registers.
+* `i threads` prints information relevant to FreeRTOS thread execution.
 
 Licenses
 --------
