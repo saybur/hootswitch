@@ -103,12 +103,16 @@
  *
  * Host initialization and native device assignment happens before this is
  * used, feel free to register in response to an assignment call from there.
+ *
+ * It is possible for users to switch drivers to active computers that are
+ * offline or are in the process of booting and have not yet reset the bus.
+ * Drivers need to handle this condition gracefully where possible.
  */
 
 typedef struct {
 	uint8_t length;
 	uint8_t data[8];
-} talk_data_type;
+} talk_data_entry;
 
 typedef struct {
 	const char *name;     // name of driver for debugging purposes

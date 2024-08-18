@@ -76,6 +76,11 @@
 #define SCROLL_LOCK_LED       (1U << 2)
 
 typedef struct {
+	uint8_t length;
+	uint8_t data[2];
+} keyboard_data;
+
+typedef struct {
 	uint8_t hdev;
 	uint8_t drv_idx;
 	bool extended;
@@ -84,7 +89,7 @@ typedef struct {
 	uint16_t reg2;
 } keyboard;
 
-static volatile uint8_t active = 255;
+static volatile uint8_t active;
 static keyboard keyboards[MAX_KEYBOARDS];
 static uint8_t keyboard_count;
 
@@ -100,11 +105,16 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 	if (active == comp) {
 		keyboards[ref].reg2 = 0xFFFF;
 		xQueueReset(keyboards[ref].queue);
+		computer_queue_set(comp, keyboards[ref].drv_idx, keyboards[ref].queue);
 	}
 }
 
 static void drvr_switch(uint8_t comp)
 {
+	for (uint8_t i = 0; i < keyboard_count; i++) {
+		computer_queue_set(active, keyboards[i].drv_idx, NULL);
+		computer_queue_set(comp, keyboards[i].drv_idx, keyboards[i].queue);
+	}
 	active = comp;
 }
 
@@ -151,11 +161,11 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 	} else {
 		kbd->extended = handle_change(0x03);
 	}
-	kbd->queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH, 2);
+	kbd->queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH, sizeof(keyboard_data));
+	assert(kbd->queue != NULL);
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
 		kbd->dhi[c] = DEFAULT_HANDLER;
 	}
-	assert(kbd->queue != NULL);
 
 	driver_register(&kbd->drv_idx, &keyboard_driver, keyboard_count);
 	keyboard_count++;
@@ -176,7 +186,12 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 	if (data_len >= 2 && active < COMPUTER_COUNT) {
 		dbg("kbd: %d %d", data[0], data[1]);
 
-		computer_data_offer(active, keyboards[i].drv_idx, 0, data, 2, false);
+		// enqueue data, dropping if queue is full
+		keyboard_data kb;
+		kb.length = 2;
+		kb.data[0] = data[0];
+		kb.data[1] = data[1];
+		xQueueSend(keyboards[i].queue, &kb, 0);
 	}
 }
 

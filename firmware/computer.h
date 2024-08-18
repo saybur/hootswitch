@@ -21,10 +21,34 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "FreeRTOS.h"
+#include "queue.h"
+
 #include "driver.h"
 
 bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep);
+
+/**
+ * Assigns a queue that will be queried for Talk 0 data automatically.
+ *
+ * This mechanism allows drivers to use a more asynchronous method to perform
+ * data updates than the above method. The queue is drained in two spots:
+ * first immediately following the talk callback, and again periodically.
+ *
+ * For performance, this mechanism is only available for Talk 0 (at least at
+ * this point). The queue will be drained by every computer it is assigned to.
+ * For devices that only want to send to an active computer, you will need to
+ * de-assign the old computer before assigning to the new one.
+ *
+ * Importantly, do not delete the provided queue before unassigning it!
+ *
+ * @param computer  the computer index to assign for.
+ * @param drv_idx   the index that your driver/device assignment was originally
+ *                  given during registration.
+ * @param queue     the queue to assign, or NULL to deassign an existing queue.
+ */
+void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue);
 
 /**
  * Switch to the computer matching the target.

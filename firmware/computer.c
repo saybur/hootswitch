@@ -86,7 +86,8 @@ typedef struct {
 	uint8_t ref;              // ref constant provided at driver reg
 	bool srq_en;              // true if SRQ enabled in Reg3
 	semaphore_t sem;          // semaphore for locking the Talk registers
-	register_data talk[3];    // Talk register contents (registers 0-2)
+	volatile register_data talk[3];  // Talk register contents (registers 0-2)
+	QueueHandle_t queue;      // optional queue for holding pending Talk 0 data
 } comp_device;
 
 typedef struct {
@@ -669,6 +670,56 @@ static void computer_pio_isr(void)
  * ---------------------------------------------------------------------------
  */
 
+/*
+ * Low-level setter for Talk data. This must only be invoked with the data
+ * semaphore already locked.
+ */
+static inline void computer_data_set_talk(uint8_t comp, comp_device *dev,
+		uint8_t reg, uint8_t *data, uint8_t data_len, bool keep)
+{
+	// copy data
+	for (uint8_t i = 0; i < data_len; i++) {
+		dev->talk[reg].data[i] = data[i];
+	}
+	dev->talk[reg].length = data_len;
+	dev->talk[reg].keep = keep;
+
+	// update SRQ flags if needed
+	if (reg == 0 && dev->srq_en) { // only for Talk 0
+		computers[comp].srq |= 1U << dev->address;
+	}
+}
+
+/*
+ * Checks if a queue has been set for a particular computer/device combination.
+ * If there is one, it will lock the Talk register, check the queue for data,
+ * and insert it.
+ *
+ * This must be reentrant due to the potential for being called from a separate
+ * worker thread. This is accomplished by hiding behind the semaphore. This
+ * will miss opportunities to drain the queue, which isn't a huge deal and
+ * will get resolved on the next poll check.
+ */
+static inline void computer_dev_queue_drain(uint8_t comp, comp_device *dev)
+{
+	QueueHandle_t dev_queue = dev->queue; // copy in case it gets changed
+	if (dev_queue) {
+		if (sem_try_acquire(&dev->sem)) {
+			// is data already pending?
+			if (dev->talk[0].length == 0) {
+				// no data, pop the queue
+				talk_data_entry e;
+				if (xQueueReceive(dev_queue, &e, 0)) {
+					// insert if data exists
+					computer_data_set_talk(comp, dev, 0,
+							e.data, e.length, false);
+				}
+			}
+			sem_release(&dev->sem);
+		}
+	}
+}
+
 bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep)
 {
@@ -681,23 +732,20 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 
 	comp_device *dev = &computers[comp].devices[drv_idx];
 	if (sem_acquire_timeout_us(&dev->sem, 1000)) {
-		// copy data
-		for (uint8_t i = 0; i < data_len; i++) {
-			dev->talk[reg].data[i] = data[i];
-		}
-		dev->talk[reg].length = data_len;
-		dev->talk[reg].keep = keep;
-
-		// update SRQ flags if needed
-		if (reg == 0 && dev->srq_en) { // only for Talk 0
-			computers[comp].srq |= 1U << dev->address;
-		}
-
+		computer_data_set_talk(comp, dev, reg, data, data_len, keep);
 		sem_release(&dev->sem);
 		return true;
 	} else {
 		return false;
 	}
+}
+
+void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue)
+{
+	if (comp >= COMPUTER_COUNT) return;
+	if (drv_idx >= computers[comp].device_count) return;
+
+	computers[comp].devices[drv_idx].queue = queue;
 }
 
 /*
@@ -836,6 +884,7 @@ bool computer_switch(uint8_t target)
 	// cancel if no match and/or out of range
 	if (next >= COMPUTER_COUNT) {
 		dbg("  sw veto, no cmp %d", next);
+		return false;
 	} else {
 		dbg("  sw to %d", next);
 	}
@@ -886,6 +935,9 @@ static void computer_poll(void)
 			}
 		}
 
+		// before disposing ref data, see if device Talk queue exists
+		computer_dev_queue_drain(q->comp, q->dev);
+
 		// remove item, minding safety
 		uint32_t isr = save_and_disable_interrupts();
 		queue_tail++;
@@ -916,18 +968,29 @@ static void computer_poll(void)
 				for (uint8_t r = 0; r < 3; r++) {
 					dev->talk[r].length = 0;
 				}
+				computers[i].device_count++;
 				dbg("  add %d ($%X)", d, drv->default_addr);
 
 				// while we're here, call the reset handler
 				drv->reset_func(i, ref);
 			}
 
-			// reset length to match new set of drivers
-			computers[i].device_count = dcnt;
-
 			// mark reset complete
 			computers[i].status = STATUS_NORMAL;
 			dbg("} got %d", dcnt);
+		}
+	}
+
+	/*
+	 * Perform a check of all queues. The lack of semaphore lock on the length
+	 * check is intentional, the function will resolve that.
+	 */
+	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
+		uint8_t dcnt = driver_count_devices();
+		for (uint8_t d = 0; d < dcnt; d++) {
+			if (computers[i].devices[d].talk[0].length == 0) {
+				computer_dev_queue_drain(i, &computers[i].devices[d]);
+			}
 		}
 	}
 }
@@ -936,7 +999,7 @@ void computer_task(__unused void *parameters)
 {
 	task_handle = xTaskGetCurrentTaskHandle();
 	while (true) {
-		ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+		ulTaskNotifyTake(pdFALSE, 1);
 		computer_poll();
 	}
 }
