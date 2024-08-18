@@ -137,7 +137,7 @@ const uint8_t randt[] = {
 };
 
 static TaskHandle_t task_handle = NULL;
-static uint8_t active_computer = 255;
+static uint8_t active_computer;
 static computer_t computers[COMPUTER_COUNT];
 static uint32_t off_pio_atn, off_pio_rx, off_pio_tx;
 
@@ -829,7 +829,7 @@ bool computer_switch(uint8_t target)
 			}
 		}
 	} else {
-		dbg("user sw cmp %d", target);
+		dbg("sw cmp %d", target);
 		next = target;
 	}
 
@@ -838,11 +838,6 @@ bool computer_switch(uint8_t target)
 		dbg("  sw veto, no cmp %d", next);
 	} else {
 		dbg("  sw to %d", next);
-	}
-
-	// update LED if there is a current active system
-	if (active_computer < COMPUTER_COUNT) {
-		led_machine(active_computer, LED_DETECT);
 	}
 
 	// switch the drivers over
@@ -929,14 +924,6 @@ static void computer_poll(void)
 
 			// reset length to match new set of drivers
 			computers[i].device_count = dcnt;
-
-			// mark this as active if we haven't seen a system yet
-			if (active_computer == 255) {
-				computer_switch(i);
-			}
-
-			// update LED to reflect system is active
-			led_machine(i, active_computer == i ? LED_ACTIVE : LED_DETECT);
 
 			// mark reset complete
 			computers[i].status = STATUS_NORMAL;

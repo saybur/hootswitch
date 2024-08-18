@@ -86,6 +86,7 @@ int main(void)
 
 	driver_init();
 	computer_start();
+	computer_switch(0);
 
 	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
 			NULL, DISPATCH_PRIORITY, NULL);
