@@ -24,7 +24,7 @@
 #include "driver.h"
 
 bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
-		uint8_t *data, uint8_t data_len);
+		uint8_t *data, uint8_t data_len, bool keep);
 
 /**
  * Switch to the computer matching the target.

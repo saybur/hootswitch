@@ -81,10 +81,15 @@ typedef struct {
 } comp_device;
 
 typedef struct {
+	uint8_t data[8];
+	uint8_t length;
+	bool keep;
+} register_data;
+
+typedef struct {
 	semaphore_t sem;
-	uint8_t talk[3][8];
-	uint8_t talk_len[3];
-} driver_data_t;
+	register_data reg[3];
+} driver_data;
 
 typedef struct {
 	volatile bus_phase phase;
@@ -102,10 +107,10 @@ typedef struct {
 	volatile uint8_t device;           // caches last active device index
 	volatile uint8_t reg;              // caches last active register (or 0)
 	volatile cmd_type command_type;    // caches last command's type
-	volatile uint8_t listen_data[8];   // sink for DMA data during Listen
+	volatile uint8_t listen[8];        // sink for DMA data during Listen
 
 	// buffers for Talk data storage on register 0-2
-	driver_data_t driver_data[DEVICE_MAX];
+	driver_data talk[DEVICE_MAX];
 
 	// general values to assist with debugging/info reporting
 	uint32_t dbg_atn;          // attention from GPIO ISR
@@ -260,7 +265,7 @@ static void dev_pio_rx_start(uint8_t i)
 	channel_config_set_read_increment(&dc, false);
 	channel_config_set_write_increment(&dc, true);
 	dma_channel_configure(dma_channels[i], &dc,
-			computers[i].listen_data,
+			computers[i].listen,
 			&(COMPUTER_PIO->rxf[i]),
 			8,
 			true); // start
@@ -393,19 +398,19 @@ static bus_phase isr_command_execute(uint8_t i)
 			return PHASE_TALK;
 		} else {
 			uint8_t dev = computers[i].device;
-			driver_data_t *drv_data = &computers[i].driver_data[dev];
-			if (sem_try_acquire(&drv_data->sem)) {
+			driver_data *drv_talk = &computers[i].talk[dev];
+			if (sem_try_acquire(&drv_talk->sem)) {
 				// got the lock
-				uint8_t dlen = drv_data->talk_len[reg];
+				uint8_t dlen = drv_talk->reg[reg].length;
 				if (dlen == 0) {
 					// no data: halt transmission and let it time out
-					sem_release(&drv_data->sem);
+					sem_release(&drv_talk->sem);
 					dev_pio_stop(i);
 					dev_pio_atn_start(i);
 					return PHASE_IDLE;
 				} else {
 					bus_tx_dev_putm(COMPUTER_PIO, i,
-							drv_data->talk[reg], dlen);
+							drv_talk->reg[reg].data, dlen);
 					// hold the semaphore until data send done
 					return PHASE_TALK;
 				}
@@ -452,12 +457,14 @@ static void isr_talk_complete(uint8_t i)
 			computers[i].srq &= ~(1U << dev);
 		}
 		if (reg < 3) {
-			computers[i].driver_data[dev].talk_len[reg] = 0;
+			if (! computers[i].talk[dev].reg[reg].keep) {
+				computers[i].talk[dev].reg[reg].length = 0;
+			}
 			uint8_t qi;
 			queue_add(&qi, i);
 		}
 	}
-	sem_release(&computers[i].driver_data[dev].sem);
+	sem_release(&computers[i].talk[dev].sem);
 }
 
 static void isr_listen_complete(uint8_t i)
@@ -476,8 +483,8 @@ static void isr_listen_complete(uint8_t i)
 			return;
 		}
 
-		uint8_t up = computers[i].listen_data[0];
-		uint8_t lw = computers[i].listen_data[1];
+		uint8_t up = computers[i].listen[0];
+		uint8_t lw = computers[i].listen[1];
 
 		// if there was a previous collision we are to ignore this
 		// cheat a bit and assume last collision was targeted at this address!
@@ -507,7 +514,7 @@ static void isr_listen_complete(uint8_t i)
 		uint8_t qi;
 		if (queue_add(&qi, i)) {
 			for (uint8_t di = 0; di < xfer; di++) {
-				queue[qi].data[di] = computers[i].listen_data[di];
+				queue[qi].data[di] = computers[i].listen[di];
 			}
 			queue[qi].length = xfer;
 		}
@@ -666,7 +673,7 @@ static void computer_pio_isr(void)
  */
 
 bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
-		uint8_t *data, uint8_t data_len)
+		uint8_t *data, uint8_t data_len, bool keep)
 {
 	if (comp >= COMPUTER_COUNT) return false;
 	if (dev >= computers[comp].device_count) return false;
@@ -675,13 +682,14 @@ bool computer_data_offer(uint8_t comp, uint8_t dev, uint8_t reg,
 
 	if (computers[comp].status != STATUS_NORMAL) return false;
 
-	driver_data_t *drv = &computers[comp].driver_data[dev];
+	driver_data *drv = &computers[comp].talk[dev];
 	if (sem_acquire_timeout_us(&drv->sem, 1000)) {
 		// copy data
 		for (uint8_t i = 0; i < data_len; i++) {
-			drv->talk[reg][i] = data[i];
+			drv->reg[reg].data[i] = data[i];
 		}
-		drv->talk_len[reg] = data_len;
+		drv->reg[reg].length = data_len;
+		drv->reg[reg].keep = keep;
 
 		// update SRQ flags if needed
 		if (reg == 0 && computers[comp].srq_en[dev]) { // only for Talk 0
@@ -724,7 +732,7 @@ void computer_init(void)
 		};
 		for (uint j = 0; j < DEVICE_MAX; j++) {
 			computers[i].srq_en[j] = true;
-			sem_init(&(computers[i].driver_data[j].sem), 1, 1);
+			sem_init(&(computers[i].talk[j].sem), 1, 1);
 		}
 	}
 

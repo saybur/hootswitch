@@ -36,7 +36,7 @@
 #define DEFAULT_HANDLER       2
 
 // how many Talk 0s from a keyboard are queued for sending to computers?
-#define KEYBOARD_QUEUE_SIZE   8
+#define KEYBOARD_QUEUE_DEPTH  8
 
 /*
  * Register 2 tracks the state of various meta keys and the LEDs on the
@@ -163,8 +163,7 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 	} else {
 		keyboards[keyboard_count].extended = handle_change(0x03);
 	}
-	keyboards[keyboard_count].queue = xQueueCreate(
-			KEYBOARD_QUEUE_SIZE, sizeof(talk_data_type));
+	keyboards[keyboard_count].queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH, 2);
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
 		keyboards[keyboard_count].dhi[c] = DEFAULT_HANDLER;
 	}
@@ -188,7 +187,8 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 	if (data_len >= 2 && active < COMPUTER_COUNT) {
 		dbg("kbd: %d %d", data[0], data[1]);
-		computer_data_offer(active, keyboards[i].dev, 0, data, 2);
+
+		computer_data_offer(active, keyboards[i].dev, 0, data, 2, false);
 	}
 }
 

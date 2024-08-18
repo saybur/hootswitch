@@ -183,7 +183,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 				uint8_t buf[2];
 				buf[0] = (mice[i].b1 ? 0x80 : 0x00) | mice[i].dy;
 				buf[1] = (mice[i].b2 ? 0x80 : 0x00) | mice[i].dx;
-				computer_data_offer(active, mice[i].dev, 0, buf, 2);
+				computer_data_offer(active, mice[i].dev, 0, buf, 2, false);
 			}
 			xSemaphoreGive(mice[i].sem);
 		}
