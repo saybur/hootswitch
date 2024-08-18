@@ -35,24 +35,21 @@
  * provides several functions which will be called back by the connected
  * computers to perform varous tasks. The functions are as follows:
  *
- * - void reset_func(uint8_t comp, uint8_t dev)
+ * - void reset_func(uint8_t comp, uint32_t ref)
  * - void switch_func(uint8_t comp)
- * - void talk_func(uint8_t comp, uint8_t dev, uint8_t reg)
- * - void listen_func(uint8_t comp, uint8_t dev, uint8_t reg,
+ * - void talk_func(uint8_t comp, uint32_t ref, uint8_t reg)
+ * - void listen_func(uint8_t comp, uint32_t ref, uint8_t reg,
  *                 volatile uint8_t *data, uint8_t data_len)
- * - void flush_func(uint8_t comp, uint8_t dev)
- * - bool srq_func(uint8_t comp, uint8_t dev)
- * - void get_handle_func(uint8_t comp, uint8_t dev, uint8_t *handle)
- * - void set_handle_func(uint8_t comp, uint8_t dev, uint8_t handle)
+ * - void flush_func(uint8_t comp, uint32_t ref)
+ * - bool srq_func(uint8_t comp, uint32_t ref)
+ * - void get_handle_func(uint8_t comp, uint32_t ref, uint8_t *handle)
+ * - void set_handle_func(uint8_t comp, uint32_t ref, uint8_t handle)
  * - void poll_func(void)
  *
  * These share some common parameters:
  *
  * - `comp` is the computer ID that the task is coming from.
- * - `dev` is the device list ID returned during registration, to differentiate
- *   between multiple devices if more than one gets registered for the same
- *   underlying functions. If you don't register more than one device you can
- *   ignore this.
+ * - `ref` is the reference value originally provided during registration.
  * - `reg` is a register value, 1:1 to the ADB register, from 0-2 (register 3
  *   is handled for you).
  * - `handle` is the ADB device handler ID (DHI) value. After reset you should
@@ -116,13 +113,13 @@ typedef struct {
 typedef struct {
 	const char *name;     // name of driver for debugging purposes
 	uint8_t default_addr; // default bus address to be used at reset
-	void (*reset_func)(uint8_t, uint8_t);
+	void (*reset_func)(uint8_t, uint32_t);
 	void (*switch_func)(uint8_t);
-	void (*talk_func)(uint8_t, uint8_t, uint8_t);
-	void (*listen_func)(uint8_t, uint8_t, uint8_t, volatile uint8_t*, uint8_t);
-	void (*flush_func)(uint8_t, uint8_t);
-	void (*get_handle_func)(uint8_t, uint8_t, uint8_t*);
-	void (*set_handle_func)(uint8_t, uint8_t, uint8_t);
+	void (*talk_func)(uint8_t, uint32_t, uint8_t);
+	void (*listen_func)(uint8_t, uint32_t, uint8_t, volatile uint8_t*, uint8_t);
+	void (*flush_func)(uint8_t, uint32_t);
+	void (*get_handle_func)(uint8_t, uint32_t, uint8_t*);
+	void (*set_handle_func)(uint8_t, uint32_t, uint8_t);
 } dev_driver;
 
 /*
@@ -143,15 +140,17 @@ uint8_t driver_count_devices(void);
 
 /**
  * Register a new device to the given driver. This saves the given device
- * driver pointer internally. This will also set a device identifier in the
- * integer pointer, which will be used when calling back the functions given.
+ * driver pointer internally, along with a value to use when calling back the
+ * functions given.
  *
- * @param *dev_id  will be set to the device identifier, for later callbacks,
- *                 or NULL if the driver doesn't need this.
+ * @param *index   driver registration index.
  * @param *driver  pointer to the new driver to add.
+ * @param ref      a reference constant that will be provided during each
+ *                 callback, can be any value useful to the driver (array
+ *                 index, pointer, etc).
  * @return         true if it was added, false otherwise.
  */
-bool driver_register(uint8_t *dev_id, dev_driver *driver);
+bool driver_register(uint8_t *index, dev_driver *driver, uint32_t ref);
 
 /*
  * ----------------------------------------------------------------------------
@@ -160,7 +159,7 @@ bool driver_register(uint8_t *dev_id, dev_driver *driver);
  * ----------------------------------------------------------------------------
  */
 
-bool driver_get(uint8_t dev_id, dev_driver **driver);
+bool driver_get(uint8_t index, dev_driver **driver, uint32_t *ref);
 void driver_init(void); // see .c file for details
 
 #endif /* __DRIVER_H__ */

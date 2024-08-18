@@ -37,16 +37,16 @@
 
 typedef struct {
 	uint8_t hdev;
-	uint8_t dev;
+	uint8_t drv_idx;
 	uint8_t dhi[COMPUTER_COUNT];
 	SemaphoreHandle_t sem;
 	bool pending;
 	uint8_t x, y, dx, dy;
 	bool b1, b2; // b2 is likely always false, see Ch8 2nd Ed Mac Hardware
-} mouse_type;
+} mouse;
 
 static volatile uint8_t active = 255;
-static mouse_type mice[MAX_MICE];
+static mouse mice[MAX_MICE];
 static uint8_t mouse_count;
 
 /*
@@ -55,21 +55,19 @@ static uint8_t mouse_count;
  * ----------------------------------------------------------------------------
  */
 
-static void drvr_reset(uint8_t comp, uint8_t device)
+static void drvr_reset(uint8_t comp, uint32_t ref)
 {
-	for (uint8_t i = 0; i < mouse_count; i++) {
-		mice[i].dhi[comp] = DEFAULT_HANDLER;
+	mice[ref].dhi[comp] = DEFAULT_HANDLER;
 
-		if (active == comp && mice[i].dev == device) {
-			if (xSemaphoreTake(mice[i].sem, portMAX_DELAY)) {
-				mice[i].x = 0;
-				mice[i].y = 0;
-				mice[i].dx = 0;
-				mice[i].dy = 0;
-				mice[i].b1 = false;
-				mice[i].b2 = false;
-				xSemaphoreGive(mice[i].sem);
-			}
+	if (active == comp) {
+		if (xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
+			mice[ref].x = 0;
+			mice[ref].y = 0;
+			mice[ref].dx = 0;
+			mice[ref].dy = 0;
+			mice[ref].b1 = false;
+			mice[ref].b2 = false;
+			xSemaphoreGive(mice[ref].sem);
 		}
 	}
 }
@@ -79,43 +77,29 @@ static void drvr_switch(uint8_t comp)
 	active = comp;
 }
 
-static void drvr_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
+static void drvr_get_handle(uint8_t comp, uint32_t ref, uint8_t *hndl)
 {
-	for (uint8_t i = 0; i < mouse_count; i++) {
-		if (mice[i].dev == device) {
-			*hndl = mice[i].dhi[comp];
-			return;
-		}
-	}
+	*hndl = mice[ref].dhi[comp];
 }
 
-static void drvr_set_handle(uint8_t comp, uint8_t device, uint8_t hndl)
+static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 {
 	if (hndl != 1 || hndl != 2) return;
 
-	for (uint8_t i = 0; i < mouse_count; i++) {
-		if (mice[i].dev == device) {
-			mice[i].dhi[comp] = hndl;
-			return;
-		}
-	}
+	mice[ref].dhi[comp] = hndl;
 }
 
-static void drvr_talk(uint8_t comp, uint8_t device, uint8_t reg)
+static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg)
 {
 	if (active != comp || reg != 0) return;
 
-	for (uint8_t i = 0; i < mouse_count; i++) {
-		if (mice[i].dev == device) {
-			if (xSemaphoreTake(mice[i].sem, portMAX_DELAY)) {
-				mice[i].x = (mice[i].x - mice[i].dx) & 0x7F;
-				mice[i].y = (mice[i].y - mice[i].dy) & 0x7F;
-				mice[i].dx = 0;
-				mice[i].dy = 0;
-				mice[i].pending = false;
-				xSemaphoreGive(mice[i].sem);
-			}
-		}
+	if (xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
+		mice[ref].x = (mice[ref].x - mice[ref].dx) & 0x7F;
+		mice[ref].y = (mice[ref].y - mice[ref].dy) & 0x7F;
+		mice[ref].dx = 0;
+		mice[ref].dy = 0;
+		mice[ref].pending = false;
+		xSemaphoreGive(mice[ref].sem);
 	}
 }
 
@@ -142,14 +126,15 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 	if (info->address_def != 0x03) return false;
 	if (! (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x02)) return false;
 
-	mice[mouse_count].hdev = info->hdev;
-	mice[mouse_count].sem = xSemaphoreCreateMutex();
+	mouse *mse = &mice[mouse_count];
+	mse->hdev = info->hdev;
+	mse->sem = xSemaphoreCreateMutex();
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-		mice[mouse_count].dhi[c] = DEFAULT_HANDLER;
+		mse->dhi[c] = DEFAULT_HANDLER;
 	}
-	assert(mice[mouse_count].sem != NULL);
+	assert(mse->sem != NULL);
 
-	driver_register(&mice[mouse_count].dev, &mouse_driver);
+	driver_register(&mse->drv_idx, &mouse_driver, mouse_count);
 	mouse_count++;
 	return true;
 }
@@ -183,7 +168,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 				uint8_t buf[2];
 				buf[0] = (mice[i].b1 ? 0x80 : 0x00) | mice[i].dy;
 				buf[1] = (mice[i].b2 ? 0x80 : 0x00) | mice[i].dx;
-				computer_data_offer(active, mice[i].dev, 0, buf, 2, false);
+				computer_data_offer(active, mice[i].drv_idx, 0, buf, 2, false);
 			}
 			xSemaphoreGive(mice[i].sem);
 		}

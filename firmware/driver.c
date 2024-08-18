@@ -22,6 +22,7 @@
 #include "hardware.h"
 
 static dev_driver *device_list[DEVICE_MAX];
+static uint32_t references[DEVICE_MAX];
 static uint8_t device_list_count;
 
 uint8_t driver_count_devices(void)
@@ -29,27 +30,32 @@ uint8_t driver_count_devices(void)
 	return device_list_count;
 }
 
-bool driver_register(uint8_t *dev_id, dev_driver *driver)
+bool driver_register(uint8_t *index, dev_driver *driver, uint32_t ref)
 {
 	if (driver == NULL) {
 		return false;
 	}
 
 	if (device_list_count < DEVICE_MAX) {
-		if (dev_id != NULL) {
-			*dev_id = device_list_count;
+		if (index != NULL) {
+			*index = device_list_count;
 		}
-		device_list[device_list_count++] = driver;
+		device_list[device_list_count] = driver;
+		references[device_list_count] = ref;
+		device_list_count++;
 		return true;
 	} else {
 		return false;
 	}
 }
 
-bool driver_get(uint8_t dev_id, dev_driver **driver)
+bool driver_get(uint8_t index, dev_driver **driver, uint32_t *ref)
 {
-	if (dev_id < device_list_count) {
-		*driver = device_list[dev_id];
+	if (index < device_list_count) {
+		*driver = device_list[index];
+		if (ref != NULL) {
+			*ref = references[index];
+		}
 		return true;
 	} else {
 		return false;

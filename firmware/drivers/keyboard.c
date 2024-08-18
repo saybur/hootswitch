@@ -77,15 +77,15 @@
 
 typedef struct {
 	uint8_t hdev;
-	uint8_t dev;
+	uint8_t drv_idx;
 	bool extended;
 	uint8_t dhi[COMPUTER_COUNT];
 	QueueHandle_t queue;
 	uint16_t reg2;
-} keyboard_type;
+} keyboard;
 
 static volatile uint8_t active = 255;
-static keyboard_type keyboards[MAX_KEYBOARDS];
+static keyboard keyboards[MAX_KEYBOARDS];
 static uint8_t keyboard_count;
 
 /*
@@ -94,15 +94,12 @@ static uint8_t keyboard_count;
  * ----------------------------------------------------------------------------
  */
 
-static void drvr_reset(uint8_t comp, uint8_t device)
+static void drvr_reset(uint8_t comp, uint32_t ref)
 {
-	for (uint8_t i = 0; i < keyboard_count; i++) {
-		keyboards[i].dhi[comp] = DEFAULT_HANDLER;
-
-		if (active == comp && keyboards[i].dev == device) {
-			keyboards[i].reg2 = 0xFFFF;
-			xQueueReset(keyboards[i].queue);
-		}
+	keyboards[ref].dhi[comp] = DEFAULT_HANDLER;
+	if (active == comp) {
+		keyboards[ref].reg2 = 0xFFFF;
+		xQueueReset(keyboards[ref].queue);
 	}
 }
 
@@ -111,27 +108,17 @@ static void drvr_switch(uint8_t comp)
 	active = comp;
 }
 
-static void drvr_get_handle(uint8_t comp, uint8_t device, uint8_t *hndl)
+static void drvr_get_handle(uint8_t comp, uint32_t ref, uint8_t *hndl)
 {
-	for (uint8_t i = 0; i < keyboard_count; i++) {
-		if (keyboards[i].dev == device) {
-			*hndl = keyboards[i].dhi[comp];
-			return;
-		}
-	}
+	*hndl = keyboards[ref].dhi[comp];
 }
 
-static void drvr_set_handle(uint8_t comp, uint8_t device, uint8_t hndl)
+static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 {
 	if (hndl != 2 || hndl != 3) return;
 	// TODO handle extended better
 
-	for (uint8_t i = 0; i < keyboard_count; i++) {
-		if (keyboards[i].dev == device) {
-			keyboards[i].dhi[comp] = hndl;
-			return;
-		}
-	}
+	keyboards[ref].dhi[comp] = hndl;
 }
 
 static dev_driver keyboard_driver = {
@@ -157,19 +144,20 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 	if (info->address_def != 0x02) return false;
 	if (! (info->dhid_cur == DEFAULT_HANDLER || info->dhid_cur == 0x03)) return false;
 
-	keyboards[keyboard_count].hdev = info->hdev;
+	keyboard *kbd = &keyboards[keyboard_count];
+	kbd->hdev = info->hdev;
 	if (info->dhid_cur == 0x03) {
-		keyboards[keyboard_count].extended = true;
+		kbd->extended = true;
 	} else {
-		keyboards[keyboard_count].extended = handle_change(0x03);
+		kbd->extended = handle_change(0x03);
 	}
-	keyboards[keyboard_count].queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH, 2);
+	kbd->queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH, 2);
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-		keyboards[keyboard_count].dhi[c] = DEFAULT_HANDLER;
+		kbd->dhi[c] = DEFAULT_HANDLER;
 	}
-	assert(keyboards[keyboard_count].queue != NULL);
+	assert(kbd->queue != NULL);
 
-	driver_register(&keyboards[keyboard_count].dev, &keyboard_driver);
+	driver_register(&kbd->drv_idx, &keyboard_driver, keyboard_count);
 	keyboard_count++;
 	return true;
 }
@@ -188,7 +176,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 	if (data_len >= 2 && active < COMPUTER_COUNT) {
 		dbg("kbd: %d %d", data[0], data[1]);
 
-		computer_data_offer(active, keyboards[i].dev, 0, data, 2, false);
+		computer_data_offer(active, keyboards[i].drv_idx, 0, data, 2, false);
 	}
 }
 
