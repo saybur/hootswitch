@@ -73,11 +73,6 @@ int main(void)
 	}
 	busy_wait_ms(1000);
 
-	// test: turn computer 1 on
-	gpio_put(C1_PSW_PIN, 1);
-	busy_wait_ms(1000);
-	gpio_put(C1_PSW_PIN, 0);
-
 	if (herr = host_reset_devices()) {
 		dbg_err("host device reset err %d", herr);
 	} else {

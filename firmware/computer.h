@@ -63,6 +63,14 @@ void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue);
  */
 bool computer_switch(uint8_t target);
 
+/**
+ * Sets the power switch line to the given value.
+ *
+ * @param computer  the computer index to set the power line value
+ * @param assert    if true, assert (turn on), if false, release.
+ */
+void computer_psw(uint8_t computer, bool assert);
+
 void computer_init(void);
 void computer_start(void);
 void computer_task(void *parameters);

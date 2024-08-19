@@ -112,6 +112,7 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 static void drvr_switch(uint8_t comp)
 {
 	for (uint8_t i = 0; i < keyboard_count; i++) {
+		computer_psw(active, false);
 		computer_queue_set(active, keyboards[i].drv_idx, NULL);
 		computer_queue_set(comp, keyboards[i].drv_idx, keyboards[i].queue);
 	}
@@ -185,6 +186,13 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 	if (data_len >= 2 && active < COMPUTER_COUNT) {
 		dbg("kbd: %d %d", data[0], data[1]);
+
+		// handle power switch activation
+		if (data[0] == 0x7F && data[1] == 0x7F) {
+			computer_psw(active, true);
+		} else if (data[0] == 0xFF && data[1] == 0xFF) {
+			computer_psw(active, false);
+		}
 
 		// enqueue data, dropping if queue is full
 		keyboard_data kb;

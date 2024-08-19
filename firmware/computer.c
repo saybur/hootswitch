@@ -122,6 +122,9 @@ uint32_t const computer_do_pins[] = {
 uint32_t const computer_di_pins[] = {
 	C1_DI_PIN, C2_DI_PIN, C3_DI_PIN, C4_DI_PIN
 };
+uint32_t const computer_psw_pins[] = {
+	C1_PSW_PIN, C2_PSW_PIN, C3_PSW_PIN, C4_PSW_PIN
+};
 uint8_t const dma_channels[] = {
 	COMPUTER_0_DMA, COMPUTER_1_DMA, COMPUTER_2_DMA, COMPUTER_3_DMA
 };
@@ -758,6 +761,7 @@ void computer_init(void)
 {
 	assert(sizeof(computer_do_pins) / 4 == COMPUTER_COUNT);
 	assert(sizeof(computer_di_pins) / 4 == COMPUTER_COUNT);
+	assert(sizeof(computer_psw_pins) / 4 == COMPUTER_COUNT);
 	assert(sizeof(dma_channels) == COMPUTER_COUNT);
 
 	/*
@@ -861,6 +865,13 @@ void computer_start(void)
 	// enable interrupts on peripherals
 	irq_set_enabled(COMPUTER_PIO_IRQ0, true);
 	irq_set_enabled(IO_IRQ_BANK0, true);
+}
+
+void computer_psw(uint8_t computer, bool assert)
+{
+	if (computer >= COMPUTER_COUNT) return;
+	uint32_t gpio = computer_psw_pins[computer];
+	gpio_put(gpio, assert);
 }
 
 bool computer_switch(uint8_t target)
