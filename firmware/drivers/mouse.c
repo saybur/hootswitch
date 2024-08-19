@@ -29,10 +29,16 @@
 
 #include "mouse.h"
 
+/*
+ * Basic mouse driver for relative motion devices following the standard mouse
+ * protocol. The mouse is sensitive to lag and doesn't like buffering queues
+ * so this uses an internal semaphore structure to manage updates combined
+ * with directly writing register data to the storage system.
+ */
+
 #define DEFAULT_HANDLER 1
 
 // sets the most number of passthru mice permitted
-// obviously an absurd limit
 #define MAX_MICE 4
 
 typedef struct {
@@ -40,9 +46,8 @@ typedef struct {
 	uint8_t drv_idx;
 	uint8_t dhi[COMPUTER_COUNT];
 	SemaphoreHandle_t sem;
-	bool pending;
-	uint8_t x, y, dx, dy;
-	bool b1, b2; // b2 is likely always false, see Ch8 2nd Ed Mac Hardware
+	bool pending;      // true if values below are valid
+	uint8_t accum[2];  // accumulated register data
 } mouse;
 
 static volatile uint8_t active = 255;
@@ -61,12 +66,7 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 
 	if (active == comp) {
 		if (xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
-			mice[ref].x = 0;
-			mice[ref].y = 0;
-			mice[ref].dx = 0;
-			mice[ref].dy = 0;
-			mice[ref].b1 = false;
-			mice[ref].b2 = false;
+			mice[ref].pending = false;
 			xSemaphoreGive(mice[ref].sem);
 		}
 	}
@@ -94,11 +94,13 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg)
 	if (active != comp || reg != 0) return;
 
 	if (xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
-		mice[ref].x = (mice[ref].x - mice[ref].dx) & 0x7F;
-		mice[ref].y = (mice[ref].y - mice[ref].dy) & 0x7F;
-		mice[ref].dx = 0;
-		mice[ref].dy = 0;
-		mice[ref].pending = false;
+		if (mice[ref].pending) {
+			// try to set the accumulated data to get rid of it
+			if (computer_data_offer(active, mice[ref].drv_idx,
+					0, mice[ref].accum, 2)) {
+				mice[ref].pending = false;
+			}
+		}
 		xSemaphoreGive(mice[ref].sem);
 	}
 }
@@ -154,26 +156,26 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 	// update data and enqueue it in the active computer
 	if (reg == 0 && data_len >= 2) {
-		uint8_t y = data[0] & 0x7F;
-		uint8_t x = data[1] & 0x7F;
-		mice[i].b1 = data[0] & 0x80;
-		mice[i].b2 = data[1] & 0x80;
-
 		if (xSemaphoreTake(mice[i].sem, portMAX_DELAY)) {
-			mice[i].x = (mice[i].x + x) & 0x7F;
-			mice[i].y = (mice[i].y + y) & 0x7F;
-			if (! mice[i].pending) {
-				mice[i].dx = mice[i].x;
-				mice[i].dy = mice[i].y;
-				uint8_t buf[2];
-				buf[0] = (mice[i].b1 ? 0x80 : 0x00) | mice[i].dy;
-				buf[1] = (mice[i].b2 ? 0x80 : 0x00) | mice[i].dx;
-				computer_data_offer(active, mice[i].drv_idx, 0, buf, 2, false);
+			if (mice[i].pending) {
+				// merge existing data with current data
+				data[0] = (data[0] & 0x80)
+						| ((data[0] + mice[i].accum[0]) & 0x7F);
+				data[1] = (data[1] & 0x80)
+						| ((data[1] + mice[i].accum[1]) & 0x7F);
+			}
+			// try to send data, or if send can't be done, store
+			if (computer_data_offer(active, mice[i].drv_idx, 0, data, 2)) {
+				mice[i].pending = false;
+			} else {
+				mice[i].pending = true;
+				mice[i].accum[0] = data[0];
+				mice[i].accum[1] = data[1];
 			}
 			xSemaphoreGive(mice[i].sem);
 		}
 
-		dbg("mse: %d %d %d", x, y, (uint8_t) mice[i].b1);
+		dbg("mse: %d %d", data[0], data[1]);
 	}
 }
 

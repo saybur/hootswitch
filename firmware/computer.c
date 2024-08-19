@@ -680,16 +680,27 @@ static void computer_pio_isr(void)
 static inline void computer_data_set_talk(uint8_t comp, comp_device *dev,
 		uint8_t reg, uint8_t *data, uint8_t data_len, bool keep)
 {
+	if (data_len < 2) data_len = 0;
+
 	// copy data
 	for (uint8_t i = 0; i < data_len; i++) {
 		dev->talk[reg].data[i] = data[i];
 	}
 	dev->talk[reg].length = data_len;
-	dev->talk[reg].keep = keep;
 
-	// update SRQ flags if needed
-	if (reg == 0 && dev->srq_en) { // only for Talk 0
-		computers[comp].srq |= 1U << dev->address;
+	if (data_len > 0) {
+		dev->talk[reg].keep = keep;
+
+		// update SRQ flags if needed
+		if (reg == 0 && dev->srq_en) { // only for Talk 0
+			computers[comp].srq |= 1U << dev->address;
+		}
+	} else {
+		dev->talk[reg].keep = false;
+
+		if (reg == 0 && dev->srq_en) {
+			computers[comp].srq &= ~(1U << dev->address);
+		}
 	}
 }
 
@@ -724,12 +735,39 @@ static inline void computer_dev_queue_drain(uint8_t comp, comp_device *dev)
 }
 
 bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
+		uint8_t *data, uint8_t data_len)
+{
+	if (comp >= COMPUTER_COUNT) return false;
+	if (drv_idx >= computers[comp].device_count) return false;
+	if (reg > 2) return false;
+	if (data_len > 8 || data_len < 2) return false;
+
+	if (computers[comp].status != STATUS_NORMAL) return false;
+
+	comp_device *dev = &computers[comp].devices[drv_idx];
+	if (sem_acquire_timeout_us(&dev->sem, 1000)) {
+		// if there is data in there, do not overwrite
+		if (dev->talk[reg].length > 0) {
+			sem_release(&dev->sem);
+			return false;
+		}
+
+		// no data, set what's available
+		computer_data_set_talk(comp, dev, reg, data, data_len, false);
+		sem_release(&dev->sem);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep)
 {
 	if (comp >= COMPUTER_COUNT) return false;
 	if (drv_idx >= computers[comp].device_count) return false;
 	if (reg > 2) return false;
-	if (data_len > 8 || data_len == 0) return false;
+	if (data_len > 8) return false;
 
 	if (computers[comp].status != STATUS_NORMAL) return false;
 
