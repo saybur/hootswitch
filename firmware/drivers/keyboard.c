@@ -133,6 +133,7 @@ static void drvr_switch(uint8_t comp)
 		computer_psw(active, false);
 		keyboards[i].sw_seq = 0;
 		computer_queue_set(active, keyboards[i].drv_idx, NULL);
+		xQueueReset(keyboards[i].queue);
 		computer_queue_set(comp, keyboards[i].drv_idx, keyboards[i].queue);
 	}
 	active = comp;
@@ -214,7 +215,8 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 		}
 
 		// handle switching
-		if (data[1] == 0xFF) {
+		// hi==lo seems to happen sometimes on meta key up
+		if (data[1] == 0xFF || data[0] == data[1]) {
 			if (data[0] > 0x80) {
 				keyboards[i].sw_seq <<= 8;
 				keyboards[i].sw_seq += data[0];
