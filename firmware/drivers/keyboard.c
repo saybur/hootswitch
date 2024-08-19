@@ -75,6 +75,22 @@
 #define SCROLL_LOCK_BIT       (1U << 6)
 #define SCROLL_LOCK_LED       (1U << 2)
 
+/*
+ * Magic sequence to trigger a computer switch. This is a 4-byte value shifted
+ * up on each up-key when the low byte is 0xFF; when the low byte is not 0xFF
+ * it is reset. Only up-keys count for this. Once the sequence is met, any
+ * number key 1-9 (0x12-0x19) will switch to that computer port.
+ *
+ * Sequence is Control->Option->Command->Shift.
+ */
+#define SWITCH_SEQUENCE       0xB6BAB7B8
+#define ONE_KEY_DOWN          0x12
+
+// remap keycodes to computer index numbers for 0x12-0x1D
+const uint8_t codes_to_comp_idx[] = {
+	0, 1, 2, 3, 5, 4, 254, 8, 6, 255, 7, 9
+};
+
 typedef struct {
 	uint8_t length;
 	uint8_t data[2];
@@ -87,6 +103,7 @@ typedef struct {
 	uint8_t dhi[COMPUTER_COUNT];
 	QueueHandle_t queue;
 	uint16_t reg2;
+	uint32_t sw_seq;
 } keyboard;
 
 static volatile uint8_t active;
@@ -104,6 +121,7 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 	keyboards[ref].dhi[comp] = DEFAULT_HANDLER;
 	if (active == comp) {
 		keyboards[ref].reg2 = 0xFFFF;
+		keyboards[ref].sw_seq = 0;
 		xQueueReset(keyboards[ref].queue);
 		computer_queue_set(comp, keyboards[ref].drv_idx, keyboards[ref].queue);
 	}
@@ -113,6 +131,7 @@ static void drvr_switch(uint8_t comp)
 {
 	for (uint8_t i = 0; i < keyboard_count; i++) {
 		computer_psw(active, false);
+		keyboards[i].sw_seq = 0;
 		computer_queue_set(active, keyboards[i].drv_idx, NULL);
 		computer_queue_set(comp, keyboards[i].drv_idx, keyboards[i].queue);
 	}
@@ -192,6 +211,22 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 			computer_psw(active, true);
 		} else if (data[0] == 0xFF && data[1] == 0xFF) {
 			computer_psw(active, false);
+		}
+
+		// handle switching
+		if (data[1] == 0xFF) {
+			if (data[0] > 0x80) {
+				keyboards[i].sw_seq <<= 8;
+				keyboards[i].sw_seq += data[0];
+			} else if (keyboards[i].sw_seq == SWITCH_SEQUENCE
+					&& data[0] >= ONE_KEY_DOWN
+					&& data[0] < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
+				// match, veto keystroke and switch instead
+				computer_switch(codes_to_comp_idx[data[0] - ONE_KEY_DOWN]);
+				return;
+			}
+		} else {
+			keyboards[i].sw_seq = 0;
 		}
 
 		// enqueue data, dropping if queue is full

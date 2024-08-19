@@ -876,28 +876,32 @@ void computer_psw(uint8_t computer, bool assert)
 
 bool computer_switch(uint8_t target)
 {
-	// move to either next system _or_ target system
+	// move to either next port _or_ target port
 	uint8_t next = active_computer;
 	if (target >= COMPUTER_COUNT) {
 		dbg("sw next");
-		for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
-			next++;
-			if (next >= COMPUTER_COUNT) next = 0;
-			if (computers[next].status == STATUS_NORMAL) {
-				break;
-			}
-		}
+		next++;
+		if (next >= COMPUTER_COUNT) next = 0;
 	} else {
 		dbg("sw cmp %d", target);
 		next = target;
 	}
 
-	// cancel if no match and/or out of range
+	// cancel if no match and/or out of range somehow
 	if (next >= COMPUTER_COUNT) {
 		dbg("  sw veto, no cmp %d", next);
 		return false;
 	} else {
 		dbg("  sw to %d", next);
+	}
+
+	// update LEDs to match
+	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
+		if (next == i) {
+			led_machine(i, LED_ACTIVE);
+		} else {
+			led_machine(i, 0);
+		}
 	}
 
 	// switch the drivers over
@@ -912,7 +916,6 @@ bool computer_switch(uint8_t target)
 
 	// finally update
 	active_computer = next;
-	led_machine(active_computer, LED_ACTIVE);
 	buzzer_chirp();
 	dbg("sw ok!");
 	return true;
