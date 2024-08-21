@@ -21,7 +21,7 @@ target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 add_subdirectory(drivers)
 
 target_sources(hootswitch PRIVATE
-		buzzer.c computer.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
+		button.c buzzer.c computer.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
 		)
 
 target_link_libraries(hootswitch

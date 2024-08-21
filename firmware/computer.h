@@ -98,13 +98,16 @@ void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue);
  *
  * If the target number is greater than COMPUTER_COUNT this is interpreted as
  * "switch to next computer," otherwise it switches to the computer at the
- * index selected.
+ * index selected. 255 is interpreted as "do not switch."
+ *
+ * This is asynchronous and will be picked up during the next computer task
+ * polling loop.
  *
  * @param target  the target computer number, 0-COMPUTER_COUNT-1, or higher
- *                than that to switch to the next system.
- * @return        true if switch went OK, false if no switch occurred.
+ *                than that to switch to the next system, with 255 being a
+ *                "do not switch" command.
  */
-bool computer_switch(uint8_t target);
+void computer_switch(uint8_t target);
 
 /**
  * Sets the power switch line to the given value.

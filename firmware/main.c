@@ -23,6 +23,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "button.h"
 #include "buzzer.h"
 #include "computer.h"
 #include "debug.h"
@@ -87,8 +88,8 @@ int main(void)
 			NULL, DISPATCH_PRIORITY, NULL);
 	xTaskCreate(host_task, "host", DEFAULT_STACK,
 			NULL, DISPATCH_PRIORITY, NULL);
-//	xTaskCreate(button_task, "button", DEFAULT_STACK,
-//			NULL, DEFAULT_PRIORITY, NULL);
+	xTaskCreate(button_task, "button", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
 
 	while (true) {
 		vTaskStartScheduler();

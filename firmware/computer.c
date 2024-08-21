@@ -912,7 +912,12 @@ void computer_psw(uint8_t computer, bool assert)
 	gpio_put(gpio, assert);
 }
 
-bool computer_switch(uint8_t target)
+/*
+ * Internal computer switch call. The external functions may be called from any
+ * thread, but this is not designed to be reentrant and thus is handled only
+ * from the main computer polling thread.
+ */
+static void computer_switch_to(uint8_t target)
 {
 	// move to either next port _or_ target port
 	uint8_t next = active_computer;
@@ -928,7 +933,7 @@ bool computer_switch(uint8_t target)
 	// cancel if no match and/or out of range somehow
 	if (next >= COMPUTER_COUNT) {
 		dbg("  sw veto, no cmp %d", next);
-		return false;
+		return;
 	} else {
 		dbg("  sw to %d", next);
 	}
@@ -956,7 +961,12 @@ bool computer_switch(uint8_t target)
 	active_computer = next;
 	buzzer_chirp();
 	dbg("sw ok!");
-	return true;
+}
+
+static volatile uint8_t computer_switch_target = 255;
+void computer_switch(uint8_t target)
+{
+	computer_switch_target = target;
 }
 
 static void computer_poll(void)
@@ -1044,6 +1054,15 @@ static void computer_poll(void)
 				computer_dev_queue_drain(i, &computers[i].devices[d]);
 			}
 		}
+	}
+
+	/*
+	 * Check if there is a request to change computers.
+	 */
+	uint8_t sw_target = computer_switch_target;
+	if (sw_target != 255) {
+		computer_switch_to(sw_target);
+		computer_switch_target = 255;
 	}
 }
 
