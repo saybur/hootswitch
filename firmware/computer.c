@@ -1064,6 +1064,15 @@ static void computer_poll(void)
 		computer_switch_to(sw_target);
 		computer_switch_target = 255;
 	}
+
+	/*
+	 * Check if any computer is in a non-idle phase and flip LED if so
+	 */
+	bool activity_led = false;
+	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
+		if (computers[i].phase != PHASE_IDLE) activity_led = true;
+	}
+	led_activity(activity_led);
 }
 
 void computer_task(__unused void *parameters)
