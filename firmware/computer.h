@@ -94,20 +94,22 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue);
 
 /**
- * Switch to the computer matching the target.
+ * Switch the active computer to the port number matching the target, indexed
+ * from 1. This has other modes:
  *
- * If the target number is greater than COMPUTER_COUNT this is interpreted as
- * "switch to next computer," otherwise it switches to the computer at the
- * index selected. 255 is interpreted as "do not switch."
+ * - If 0, this switches to the port number one lower than the current port,
+ *   wrapping to the highest port if already at port 1.
+ * - If greater than COMPUTER_COUNT, this switches to the port number one
+ *   higher than the current port, wrapping to port 1.
  *
  * This is asynchronous and will be picked up during the next computer task
  * polling loop.
  *
- * @param target  the target computer number, 0-COMPUTER_COUNT-1, or higher
- *                than that to switch to the next system, with 255 being a
- *                "do not switch" command.
+ * @param target  the target computer number, from 1 to COMPUTER_COUNT, or
+ *                a wrap value as specified above.
+ * @param beep    if true, trigger a beep noise on switching.
  */
-void computer_switch(uint8_t target);
+void computer_switch(uint8_t target, bool beep);
 
 /**
  * Sets the power switch line to the given value.

@@ -40,7 +40,7 @@ void button_task(void *parameters)
 			sw_cnt++;
 		} else {
 			if (sw_cnt > 3) {
-				computer_switch(254);
+				computer_switch(255, true);
 				sw_cnt = 0;
 			}
 		}

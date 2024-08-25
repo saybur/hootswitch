@@ -92,7 +92,7 @@
 
 // remap keycodes to computer index numbers for 0x12-0x1D
 const uint8_t codes_to_comp_idx[] = {
-	0, 1, 2, 3, 5, 4, 254, 8, 6, 255, 7, 9
+	1, 2, 3, 4, 6, 5, 255, 9, 7, 0, 8, 0
 };
 
 typedef struct {
@@ -336,7 +336,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 					&& data[0] >= ONE_KEY_DOWN
 					&& data[0] < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
 				// match, veto keystroke and switch instead
-				computer_switch(codes_to_comp_idx[data[0] - ONE_KEY_DOWN]);
+				computer_switch(codes_to_comp_idx[data[0] - ONE_KEY_DOWN], true);
 				return;
 			}
 		} else {

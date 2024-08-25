@@ -913,30 +913,36 @@ void computer_psw(uint8_t computer, bool assert)
 }
 
 /*
- * Internal computer switch call. The external functions may be called from any
+ * Internal computer switch call. The external function may be called from any
  * thread, but this is not designed to be reentrant and thus is handled only
  * from the main computer polling thread.
  */
 static void computer_switch_to(uint8_t target)
 {
+	bool beep = target & 0x80;
+	target &= 0x7F;
+
 	// move to either next port _or_ target port
-	uint8_t next = active_computer;
-	if (target >= COMPUTER_COUNT) {
+	uint8_t next = active_computer + 1; // indexed from 1
+	if (target > COMPUTER_COUNT) {
 		dbg("sw next");
 		next++;
-		if (next >= COMPUTER_COUNT) next = 0;
+	} else if (target == 0) {
+		dbg("sw prev");
+		next--;
 	} else {
-		dbg("sw cmp %d", target);
+		dbg("sw abs %d", target);
 		next = target;
 	}
 
-	// cancel if no match and/or out of range somehow
-	if (next >= COMPUTER_COUNT) {
-		dbg("  sw veto, no cmp %d", next);
-		return;
-	} else {
-		dbg("  sw to %d", next);
+	// constrain to safe range
+	if (next > COMPUTER_COUNT) {
+		next = 1;
+	} else if (next == 0) {
+		next = COMPUTER_COUNT;
 	}
+	dbg("  sw to port %d", next);
+	next--; // reindex from 0
 
 	// update LEDs to match
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
@@ -959,14 +965,17 @@ static void computer_switch_to(uint8_t target)
 
 	// finally update
 	active_computer = next;
-	buzzer_chirp();
+	if (beep) {
+		buzzer_chirp();
+	}
 	dbg("sw ok!");
 }
 
 static volatile uint8_t computer_switch_target = 255;
-void computer_switch(uint8_t target)
+void computer_switch(uint8_t target, bool beep)
 {
-	computer_switch_target = target;
+	if (target > COMPUTER_COUNT) target = COMPUTER_COUNT + 1;
+	computer_switch_target = (target & 0x7F) | (beep ? 0x80 : 0);
 }
 
 static void computer_poll(void)
