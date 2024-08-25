@@ -36,7 +36,7 @@ typedef enum {
 /**
  * Executes an asynchronous command on the host bus.
  *
- * This places the command in a queue and returns. The registered handler
+ * This copies the command into a queue and returns. The registered handler
  * callback will be invoked once the host controller has a chance to get to
  * your request.
  *
