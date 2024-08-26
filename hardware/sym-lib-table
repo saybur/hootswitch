@@ -1,4 +1,4 @@
 (sym_lib_table
   (lib (name "hootswitch")(type "KiCad")(uri "${KIPRJMOD}/hootswitch.kicad_sym")(options "")(descr ""))
-  (lib (name "MCU_RaspberryPi_and_Boards")(type "KiCad")(uri "${KIPRJMOD}/rpi/MCU_RaspberryPi_and_Boards.kicad_sym")(options "")(descr ""))
+  (lib (name "RPi_Pico")(type "KiCad")(uri "${KIPRJMOD}/rpi/RPi_Pico.kicad_sym")(options "")(descr ""))
 )

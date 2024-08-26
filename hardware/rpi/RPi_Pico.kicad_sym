@@ -1,29 +1,29 @@
 (kicad_symbol_lib (version 20211014) (generator kicad_symbol_editor)
-  (symbol "Pico" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+  (symbol "PicoW" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
     (property "Reference" "U" (id 0) (at -13.97 27.94 0)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Value" "Pico" (id 1) (at 0 19.05 0)
+    (property "Value" "PicoW" (id 1) (at 0 19.05 0)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Footprint" "RPi_Pico:RPi_Pico_SMD_TH" (id 2) (at 0 0 90)
+    (property "Footprint" "RPi_PicoW:RPi_Pico_SMD_TH" (id 2) (at 0 0 90)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "" (id 3) (at 0 0 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (symbol "Pico_0_0"
+    (symbol "PicoW_0_0"
       (text "Raspberry Pi" (at 0 21.59 0)
         (effects (font (size 1.27 1.27)))
       )
     )
-    (symbol "Pico_0_1"
+    (symbol "PicoW_0_1"
       (rectangle (start -15.24 26.67) (end 15.24 -26.67)
         (stroke (width 0) (type default) (color 0 0 0 0))
         (fill (type background))
       )
     )
-    (symbol "Pico_1_1"
+    (symbol "PicoW_1_1"
       (pin bidirectional line (at -17.78 24.13 0) (length 2.54)
         (name "GPIO0" (effects (font (size 1.27 1.27))))
         (number "1" (effects (font (size 1.27 1.27))))
