@@ -1,6 +1,6 @@
 refs,count,desc,jlcpcb,jlcpcb_fp,digikey,notes,cost_est
 BZ1,1,Buzzer,,,668-1456-ND,optional,1.25
-C1,1,100uF,,,P1370-ND,,0.3
+C1,1,100uF,,,1189-2260-ND,,0.28
 C2-3,2,10uF,C15850,805,,,0.1
 C4-14,11,100nF,C14663,603,,,0.01
 D1,1,LED,C84256,805,,red,0.01

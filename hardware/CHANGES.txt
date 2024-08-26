@@ -4,3 +4,9 @@ Refer to section 3.3.b of the license for information that must be included in
 this document.
 
 - 23 July 2024, rev 2024a: first design
+
+- 25 August 2024, rev 2024b: minor revision, including:
+	- Switch footprint to Pico W, add copper keepout for wireless.
+	- Expanded annular rings on the mini-DIN connectors.
+	- Increase resistance on green LEDs.
+	- Expanded mounting holes for M3 screws.
