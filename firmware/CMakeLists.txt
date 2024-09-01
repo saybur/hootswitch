@@ -15,10 +15,12 @@ add_executable(hootswitch)
 
 pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 
-# for FreeRTOS to find the configuration file
+# for FreeRTOS/TinyUSB to find the configuration file
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/usb)
 
 add_subdirectory(drivers)
+add_subdirectory(usb)
 
 target_sources(hootswitch PRIVATE
 		button.c buzzer.c computer.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
@@ -26,6 +28,7 @@ target_sources(hootswitch PRIVATE
 
 target_link_libraries(hootswitch
 		pico_async_context_freertos FreeRTOS-Kernel-Heap4
+		tinyusb_board tinyusb_device
 		pico_stdlib pico_rand pico_cyw43_arch_none
 		hardware_dma hardware_pio hardware_pwm
 		)

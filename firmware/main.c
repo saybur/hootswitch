@@ -31,6 +31,7 @@
 #include "host.h"
 #include "hardware.h"
 #include "led.h"
+#include "usb.h"
 
 #define PROGRAM_NAME       "hootswitch-v20240803"
 
@@ -52,16 +53,8 @@ static void init_hardware(void)
 	gpio_pull_up(SWITCH_PIN);
 }
 
-int main(void)
+static void init_task(__unused void *parameters)
 {
-	stdio_init_all();
-	if (cyw43_arch_init()) {
-		panic("unable to init cyw43, is this a Pico W?");
-	}
-	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-
-	init_hardware();
-
 	// wait for USB enumeration, and for ADB devices to power up themselves up
 	busy_wait_ms(1600);
 	dbg(PROGRAM_NAME);
@@ -90,6 +83,25 @@ int main(void)
 			NULL, DISPATCH_PRIORITY, NULL);
 	xTaskCreate(button_task, "button", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
+
+	vTaskDelete(NULL);
+}
+
+int main(void)
+{
+	usb_dev_init();
+	stdio_init_all();
+	if (cyw43_arch_init()) {
+		panic("unable to init cyw43, is this a Pico W?");
+	}
+	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+
+	init_hardware();
+
+	xTaskCreate(init_task, "init", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
+	xTaskCreate(usb_dev_task, "usb_dev", DEFAULT_STACK * 3,
+			NULL, configMAX_PRIORITIES - 1, NULL);
 
 	while (true) {
 		vTaskStartScheduler();
