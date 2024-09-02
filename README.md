@@ -2,8 +2,10 @@ hootswitch
 ==========
 
 Hootswitch is a prototype [ADB](https://en.wikipedia.org/wiki/Apple_Desktop_Bus)
-multiplexer, allowing peripherals (inluding keyboard and mouse) to be shared
+multiplexer that allows peripherals (inluding keyboards and mice) to be shared
 across up to four retro computers.
+
+![Hootswitch 2024a](extras/hootswitch.jpg)
 
 This project has two parts: an example hardware design and the firmware,
 located in their respective folders in this repo.
@@ -11,17 +13,22 @@ located in their respective folders in this repo.
 Status
 ------
 
-Many basic features are under development and do not work correctly. Many bugs
-remain. As of now, do not make one of these expecting a fully functional
-device: everything here is proof-of-concept at best.
+Basic ADB keyboards and mice are supported. Switching between computers works
+via the button on the front or <kbd>Control</kbd> / <kbd>Option</kbd> /
+<kbd>⌘</kbd> / <kbd>Shift</kbd> in sequence, followed by <kbd>1</kbd> -
+<kbd>4</kbd> to choose a port.
 
-This section will be updated as progress is (hopefully) made.
+The firmware is still under active development and many bugs remain. Other
+types of ADB devices are not supported yet. No features based on the Pico W
+wireless chip have not been implemented at this point.
+
+This section will continue to be updated as progress is (hopefully) made.
 
 Building
 --------
 
 You will need the Pico SDK and associated tooling. There is a setup script
-(here)[https://raw.githubusercontent.com/raspberrypi/pico-setup/master/pico_setup.sh]
+[here](https://raw.githubusercontent.com/raspberrypi/pico-setup/master/pico_setup.sh)
 that assumes you're using a Raspberry Pi as your development environment if you
 want to try that; I personally use Debian _bookworm_ on a regular x86 system
 instead, set up as follows.
