@@ -11,4 +11,4 @@ External Dependencies
 [Simple Keyboard](https://github.com/hodgef/simple-keyboard) project.
 `keyboard-capture.js` and `keyboard-capture.css` are from the
 [IP-KVM-InterFace](https://github.com/SterlingButters/ip-kvm-interface)
-project. Both are available under a 1-clause BSD license at [./LICENSE.BSD].
+project. Refer to those files for license information.
