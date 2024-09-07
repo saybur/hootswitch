@@ -2,7 +2,7 @@ Fly-By-Wire
 ===========
 
 The web portion of the serial link control system used by Hootswitch. Visit
-<https://pages.github.io/saybur/hootswitch/flybywire> to access.
+<https://saybur.github.io/hootswitch/flybywire/> to access.
 
 External Dependencies
 ---------------------
