@@ -1,0 +1,143 @@
+/*
+ * This file was originally from the IP-KVM-InterFace project at
+ * https://github.com/SterlingButters/ip-kvm-interface
+ * and was modified for use with Hootswitch. It remains available under the
+ * original license below.
+ *
+ * Copyright 2018-2020 Sterling Butters and others
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to
+ * deal in the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ */
+
+.keyboard {
+  display: flex;
+  background-color: #333;
+  justify-content: center;
+  width: 996px;
+  margin: 0 auto;
+  border-radius: 5px;
+}
+
+.simple-keyboard.hg-theme-default.hootswitch {
+	color: #ccc;
+	background-color: #333;
+}
+
+.simple-keyboard.hg-theme-default {
+  display: inline-block;
+}
+
+.simple-keyboard-main.simple-keyboard {
+  width: 600px;
+  min-width: 640px;
+  background: none;
+}
+
+.simple-keyboard-main.simple-keyboard .hg-row:first-child {
+  margin-bottom: 10px;
+}
+
+.simple-keyboard-arrows.simple-keyboard {
+  align-self: flex-end;
+  background: none;
+}
+
+.simple-keyboard .hg-button.selectedButton {
+  background: rgba(5, 25, 70, 0.5);
+  color: white;
+}
+
+.simple-keyboard .hg-button.emptySpace {
+  pointer-events: none;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.simple-keyboard-middle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-flow: column;
+}
+
+.simple-keyboard-arrows .hg-row {
+  justify-content: center;
+}
+
+.simple-keyboard-arrows .hg-button {
+  width: 50px;
+  flex-grow: 0;
+  justify-content: center;
+  display: flex;
+  align-items: center;
+}
+
+.simple-keyboard-control.simple-keyboard {
+  background: none;
+}
+
+.simple-keyboard-control.simple-keyboard .hg-row:first-child {
+  margin-bottom: 10px;
+}
+
+.simple-keyboard-control .hg-button {
+  width: 50px;
+  flex-grow: 0;
+  justify-content: center;
+  display: flex;
+  align-items: center;
+}
+
+.simple-keyboard-arrows .hg-button {
+  width: 50px;
+  justify-content: center;
+  align-items: center;
+}
+
+.simple-keyboard-numpad.simple-keyboard .hg-row:first-child {
+  margin-bottom: 10px;
+  justify-content: right;
+}
+
+.simple-keyboard-numpad .hg-button {
+  min-width: 40px;
+  max-width: 40px;
+}
+
+.simple-keyboard-numpad .hg-row:last-child .hg-button:first-child {
+  min-width: 85px;
+}
+
+.simple-keyboard-numpad .hg-row:last-child {
+  display: float;
+}
+
+.simple-keyboard.hg-theme-default .hg-button {
+  background: #555;
+}
+
+.simple-keyboard.hg-theme-default .hg-button.hg-selectedButton {
+  background: rgba(5, 25, 70, 0.5);
+  color: white;
+}
+
+.hg-button.hg-functionBtn.hg-button-space {
+  width: 250px;
+}

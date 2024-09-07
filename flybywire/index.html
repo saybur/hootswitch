@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<title>Hootswitch Fly-By-Wire</title>
+	<link rel="stylesheet" type="text/css" href="flybywire.css"></link>
+	<link rel="stylesheet" type="text/css" href="simple-keyboard/css/index.css"></link>
+	<link rel="stylesheet" type="text/css" href="keyboard-capture.css"></link>
+	<script src="simple-keyboard/index.modern.js"></script>
+</head>
+
+<body>
+
+<h1>Hootswitch Fly-By-Wire</h1>
+
+<button id="connect-button">Connect</button>
+
+<div id="control-area" class="hidden">
+	<p>Click the box below to capture the mouse.</p>
+	<canvas width="600" height="280"></canvas>
+	<div class="keyboard">
+		<div class="simple-keyboard-main"></div>
+		<div class="simple-keyboard-middle">
+			<div class="simple-keyboard-control"></div>
+			<div class="simple-keyboard-arrows"></div>
+		</div>
+		<div class="simple-keyboard-numpad"></div>
+	</div>
+	<div id="macros"></div>
+	<textarea id="log"></textarea>
+</div>
+
+<p id="disconnect-message" class="hidden">
+	To connect again, reload this page.
+</p>
+
+<button id="about-button">About</button>
+
+<div id="about-area" class="hidden">
+	<p>This page allows you to send data from a modern computer's mouse and
+	keyboard over a	USB cable to a locally connected
+	<a href="https://github.com/saybur/hootswitch">Hootswitch</a>, useful for
+	situations where you don't want to use a period keyboard/mouse (workbench
+	computers, constrained desks, development systems, etc). To use, connect
+	the Hootswitch to your system via a USB cable then click <b>Connect</b>
+	above.</p>
+	<p>Several modern web technologies are leveraged here, including the
+	<a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API">Web Serial API</a>,
+	<a href="https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock">Keyboard Lock API</a> (TODO), and
+	<a href="https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API">Pointer Lock API</a>.
+	Everything stays inside your browser, no inputs are passed to the Internet.</p>
+	<p>At least as of September 2024 most of these APIs are experimental and
+	only have support on Chrome/Chromium and the various web browsers using
+	that engine.</p>
+</div>
+
+<script src="keyboard-capture.js"></script>
+<script src="flybywire.js"></script>
+
+</body>
+
+</html>

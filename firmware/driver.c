@@ -21,6 +21,8 @@
 #include "driver.h"
 #include "hardware.h"
 
+#include "drivers/serial.h"
+
 static dev_driver *device_list[DEVICE_MAX];
 static uint32_t references[DEVICE_MAX];
 static uint8_t device_list_count;
@@ -70,4 +72,6 @@ void driver_init(void)
 	 * from here to set up during boot.
 	 * ------------------------------------------------------------------------
 	 */
+
+	serial_init();
 }

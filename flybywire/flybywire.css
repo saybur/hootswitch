@@ -1,0 +1,104 @@
+a {
+	color: #ccc;
+}
+
+a:visited {
+	color: #ccc;
+}
+
+body {
+	color: #ccc;
+	background-color: #222;
+	background-image: url("hoot.svg");
+	background-repeat: no-repeat;
+	background-size: 10%;
+}
+
+h1 {
+	text-align: center;
+}
+
+#connect-button {
+	display: block;
+	margin: 0 auto;
+	margin-bottom: 20px;
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	width: 200px;
+	height: 40px;
+	font-weight: bold;
+}
+
+#about-button {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	width: 100px;
+	height: 30px;
+	font-style: italic;
+}
+
+#control-area p {
+	text-align: center;
+}
+
+#macros {
+	display: flex;
+	margin: 0px auto;
+	width: 500px;
+	margin-top: 20px;
+	vertical-align: center;
+}
+
+#macros button {
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	margin-left: 10px;
+	height: 30px;
+}
+
+#about-area {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	width: 600px;
+}
+
+#about-area p {
+	text-align: left;
+}
+
+#disconnect-message {
+	margin-bottom: 20px;
+}
+
+canvas {
+	display: block;
+	margin: 0 auto;
+	margin-bottom: 20px;
+	border: 1px solid #555;
+	background-color: #111;
+}
+
+textarea {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	width: 990px;
+	height: 300px;
+	border: 1px solid #555;
+	color: #ccc;
+	background-color: #333;
+}
+
+.hidden {
+	display: none !important;
+}
