@@ -407,6 +407,10 @@ static bus_phase isr_command_execute(uint8_t i)
 				uint8_t dlen = dev->talk[reg].length;
 				if (dlen == 0) {
 					// no data: halt transmission and let it time out
+					if (reg == 0) {
+						// force-clear SRQ to be on the safe side
+						computers[i].srq &= ~(1U << dev->address);
+					}
 					sem_release(&dev->sem);
 					dev_pio_stop(i);
 					dev_pio_atn_start(i);
