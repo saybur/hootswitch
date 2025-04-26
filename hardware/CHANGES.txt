@@ -10,3 +10,6 @@ this document.
 	- Expanded annular rings on the mini-DIN connectors.
 	- Increase resistance on green LEDs.
 	- Expanded mounting holes for M3 screws.
+
+- 26 April 2025, rev 2024c: identical to 2024b except for fixing missing ground
+  connection on the external power / barrel jack connections.

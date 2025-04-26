@@ -4,7 +4,7 @@ Hootswitch Hardware
 This folder has the hardware design being used to develop the firmware. Known
 issues with it include:
 
-- Version 2024b has **not** been tested to manufacture. Use with caution!
+- Version 2024c has **not** been tested to manufacture. Use with caution!
 - Some features are untested, including alternate power modes.
 
 Anticipate that a future revision will be made with corrections.
