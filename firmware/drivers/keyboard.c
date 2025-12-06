@@ -108,6 +108,7 @@ typedef struct {
 	uint8_t drv_idx;
 	bool extended;
 	keyboard_memory mem[COMPUTER_COUNT];
+	uint32_t down[4];
 	uint32_t sw_seq;
 } keyboard;
 
@@ -198,6 +199,72 @@ static void set_comp_reg2(uint8_t comp, uint8_t drv_idx, uint16_t reg2)
 	computer_data_set(comp, drv_idx, 2, set, 2, true);
 }
 
+/**
+ * Sets/resets tracking bits corresponding to physical keys pressed on the real
+ * keyboard. It appears a real keyboard will send fresh key-down events
+ * following a reset, which this facilitates.
+ */
+static void down_update(uint8_t code, uint32_t *down)
+{
+	uint8_t key = code & 0x7F;
+	uint8_t idx = key >> 5;
+	uint32_t mask = 1U << (key & 0x1F);
+
+	if (code & 0x80) {
+		down[idx] &= ~mask;
+	} else {
+		down[idx] |= mask;
+	}
+}
+
+/**
+ * Called following a computer reset to send any key-down events and set
+ * register 2 appropriately for the virtual keyboard. This only happens when
+ * the computer is the *active* system, otherwise the keyboard reverts to an
+ * all-keys-up state in those functions. This is a hack to work around issue #1
+ * and probably needs more attention.
+ */
+static void send_down_keys(uint8_t ref, uint8_t comp)
+{
+	bool p = false;
+	uint8_t key = 0;
+
+	keyboard_message kb;
+	kb.length = 2;
+
+	for (uint8_t idx = 0; idx < 4; idx++) {
+		uint32_t mask = 1;
+		for (uint8_t pos = 0; pos < 32; pos++) {
+			// special case: we skip reset key, as a nasty hack to avoid
+			// double-key-send shenanagins
+			if (idx == 3 && pos == 31) continue;
+
+			// check if corresponding key is pressed, if it is enqueue a down
+			// event and update register 2 if needed
+			if (keyboards[ref].down[idx] & mask) {
+				if (p) {
+					kb.data[1] = key;
+					xQueueSend(keyboards[ref].mem[comp].queue, &kb, 0);
+					p = false;
+				} else {
+					kb.data[0] = key;
+					p = true;
+				}
+				reg2_update(key, &keyboards[ref].mem[comp].reg2);
+			}
+
+			mask <<= 1;
+			key++;
+		}
+	}
+
+	// send remaining single key if present
+	if (p) {
+		kb.data[1] = 0xFF;
+		xQueueSend(keyboards[ref].mem[comp].queue, &kb, 0);
+	}
+}
+
 /*
  * ----------------------------------------------------------------------------
  * --- Computer-Side Keyboard Driver ------------------------------------------
@@ -213,12 +280,17 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 	// (re)assign the queue, not done until the first reset for a system
 	computer_queue_set(comp, keyboards[ref].drv_idx,
 			keyboards[ref].mem[comp].queue);
-	set_comp_reg2(comp, keyboards[ref].drv_idx, DEFAULT_REGISTER_2);
 
 	if (active == comp) {
 		keyboards[ref].sw_seq = 0;
-		send_host_reg2(keyboards[ref].hdev, DEFAULT_REGISTER_2);
+		// re-send down-key events, which updates register 2 based on the
+		// physical keyboard's current pressed keys
+		send_down_keys(ref, comp);
+		// update keyboard LEDs accordingly (TODO eval how well this is done)
+		send_host_reg2(keyboards[ref].hdev, keyboards[ref].mem[comp].reg2);
 	}
+
+	set_comp_reg2(comp, keyboards[ref].drv_idx, keyboards[ref].mem[comp].reg2);
 }
 
 static void drvr_switch(uint8_t comp)
@@ -343,12 +415,15 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 		}
 
 		// set appropriate bits in Register 2 based on key state
+		// along with the map of keys pressed
 		uint16_t old_reg2 = keyboards[i].mem[active].reg2;
 		if (data[0] != 0xFF) {
 			reg2_update(data[0], &keyboards[i].mem[active].reg2);
+			down_update(data[0], keyboards[i].down);
 		}
 		if (data[1] != 0xFF) {
 			reg2_update(data[1], &keyboards[i].mem[active].reg2);
+			down_update(data[1], keyboards[i].down);
 		}
 
 		// update the real register if needed
