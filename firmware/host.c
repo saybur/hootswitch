@@ -48,7 +48,7 @@
 #define COMMAND_TIMEOUT   (800 + 70 + 800 + 65 + 300 + 300)
 #define RESET_TIMEOUT     (3200 + COMMAND_TIMEOUT)
 #define RX_MAX_TIMEOUT    (300 + 66 * 130)
-#define TYP_CMD_GAP       1000
+#define TYP_CMD_GAP       8500
 
 // Tlt below is influenced by the end of the PIO command, usually +~50us beyond
 // the normal rising edge of the stop bit. Testing is showing that this is
