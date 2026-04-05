@@ -25,6 +25,7 @@
 #include "hardware.h"
 #include "led.h"
 #include "usb.h"
+#include "bt.h"
 
 #define PROGRAM_NAME       "hootswitch-v20250426"
 
@@ -110,6 +111,8 @@ static void init_task(__unused void *parameters)
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(control_task, "control", configMINIMAL_STACK_SIZE,
 			NULL, tskIDLE_PRIORITY, NULL);
+	xTaskCreate(bt_task, "bt_dev", DEFAULT_STACK,
+			NULL, configMAX_PRIORITIES - 2, NULL);
 
 	vTaskDelete(NULL);
 }

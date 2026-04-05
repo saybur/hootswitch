@@ -18,9 +18,15 @@ pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 # for FreeRTOS/TinyUSB to find the configuration file
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/usb)
+target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/wireless)
 
 add_subdirectory(drivers)
+add_subdirectory(wireless)
 add_subdirectory(usb)
+
+target_include_directories(hootswitch PRIVATE
+		$ENV{BLUEPAD32_ROOT}/src/components/bluepad32/include)
+include_directories(hootswitch ${CMAKE_CURRENT_LIST_DIR}/wireless)
 
 target_sources(hootswitch PRIVATE
 		button.c buzzer.c computer.c config.c control.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
@@ -30,8 +36,11 @@ target_link_libraries(hootswitch
 		pico_async_context_freertos FreeRTOS-Kernel-Heap4
 		tinyusb_board tinyusb_device
 		pico_stdlib pico_rand pico_cyw43_arch_none
+		pico_btstack_classic pico_btstack_cyw43 bluepad32
 		hardware_dma hardware_pio hardware_pwm
 		)
+
+add_subdirectory($ENV{BLUEPAD32_ROOT}/src/components/bluepad32 libbluepad32)
 
 pico_enable_stdio_usb(hootswitch 1)
 pico_enable_stdio_uart(hootswitch 0)

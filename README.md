@@ -54,6 +54,9 @@ Also clone or download [FreeRTOS](https://github.com/FreeRTOS). The LTS release
 is likely fine. Set `FREERTOS_KERNEL_PATH` to the folder where
 `FreeRTOS-Kernel` is located via the above method.
 
+Also clone or download [Bluepad32](https://github.com/ricardoquesada/bluepad32)
+and set `BLUEPAD32_ROOT` as above.
+
 Once you have everything set up, build as follows from the root of the repo.
 
 ```
