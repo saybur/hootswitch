@@ -20,7 +20,7 @@
 #include "debug.h"
 #include "handler.h"
 
-#include "drivers/joystick.h"
+#include "drivers/joystick_handler.h"
 #include "drivers/kensington.h"
 #include "drivers/keyboard_handler.h"
 #include "drivers/mouse_handler.h"
@@ -72,5 +72,5 @@ void handler_init(void)
 	keyboard_handler_init();
 	mouse_handler_init();
 	kensington_init();
-	joystick_init();
+	joystick_handler_init();
 }
