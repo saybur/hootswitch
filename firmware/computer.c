@@ -698,6 +698,7 @@ static inline void computer_data_set_talk(uint8_t comp, comp_device *dev,
 		uint8_t reg, uint8_t *data, uint8_t data_len, bool keep)
 {
 	if (data_len < 2) data_len = 0;
+	if (!data) data_len = 0;
 
 	// copy data
 	for (uint8_t i = 0; i < data_len; i++) {
@@ -759,7 +760,7 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 	if (data_len > 8 || data_len < 2) return false;
 
 	comp_device *dev = &computers[comp].devices[drv_idx];
-	if (sem_acquire_timeout_us(&dev->sem, 1000)) {
+	if (sem_acquire_timeout_us(&dev->sem, COMPUTER_DATA_OFFER_TIMEOUT)) {
 		// if there is data in there, do not overwrite
 		if (dev->talk[reg].length > 0) {
 			sem_release(&dev->sem);
@@ -783,7 +784,7 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 	if (reg > 2) return false;
 
 	comp_device *dev = &computers[comp].devices[drv_idx];
-	if (sem_acquire_timeout_us(&dev->sem, 1000)) {
+	if (sem_acquire_timeout_us(&dev->sem, COMPUTER_DATA_OFFER_TIMEOUT)) {
 		computer_data_set_talk(comp, dev, reg, data, data_len, keep);
 		sem_release(&dev->sem);
 		return true;
