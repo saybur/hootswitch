@@ -71,7 +71,7 @@ Reboot.
 Licenses
 --------
 
-Except where otherwise noted, all software is available under the GNU GPL v3.
-The example hardware is available under the CERN Open Hardware Licence
-strongly-reciprocal variant, version 2. Refer to the licenses for specific
-terms.
+Except where otherwise noted, all software is available under the Mozilla
+Public License (MPL) 2.0. The example hardware is available under the CERN Open
+Hardware Licence strongly-reciprocal variant, version 2. Refer to the licenses
+for specific terms.
