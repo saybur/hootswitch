@@ -102,7 +102,9 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 	}
 
 	// make sure device is in a valid mode
-	if (! (info->dhid_cur == 0x01 || info->dhid_cur == 0x04)) {
+	if (! (info->dhid_cur == 0x01
+			|| info->dhid_cur == 0x02
+			|| info->dhid_cur == 0x04)) {
 		// already tried extended, move to basic protocol
 		if (! handle_change(0x01, true)) {
 			// failed to accept, must not be a mouse?
@@ -142,7 +144,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 		// then send it
 		mouse_update(mice[i].idx, xt, yt, buttons);
 
-		dbg("mse: %d %d", data[0], data[1]);
+		dbg("mse_h: %d %d", data[0], data[1]);
 	}
 }
 

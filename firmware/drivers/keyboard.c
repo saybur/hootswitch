@@ -338,6 +338,8 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 	uint8_t hi = m->data[1];
 	uint8_t lo = m->data[0];
 
+	dbg("kbd: lo:0x%02X, hi:0x%02X", lo, hi);
+
 	// handle power switch activation
 	if (lo == 0x7F && hi == 0x7F) {
 		computer_psw(active, true);
@@ -387,7 +389,18 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))
 {
 	if (keyboard_count >= MAX_KEYBOARDS) return false;
-	keyboards[keyboard_count].reg2_callback = reg2_callback;
+
 	*id = keyboard_count++;
-	return driver_register(&(keyboards[*id].drv_idx), &keyboard_driver, *id);
+	keyboard *kbd = &keyboards[*id];
+
+	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
+		kbd->mem[c].dhi = 0x02;
+		kbd->mem[c].queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH,
+				sizeof(keyboard_message));
+		assert(kbd->mem[c].queue != NULL);
+		kbd->mem[c].reg2 = DEFAULT_REGISTER_2;
+	}
+
+	kbd->reg2_callback = reg2_callback;
+	return driver_register(&kbd->drv_idx, &keyboard_driver, *id);
 }

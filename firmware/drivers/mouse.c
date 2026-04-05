@@ -45,6 +45,7 @@
 
 #define DEFAULT_ADDRESS 3
 #define DEFAULT_HANDLER 1
+#define EXTENDED_HANDLER 4
 #define MAX_MICE 4
 
 typedef struct {
@@ -91,7 +92,7 @@ static void drvr_get_handle(uint8_t comp, uint32_t ref, uint8_t *hndl)
 
 static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 {
-	if (hndl == 0x04 && mice[ref].extended_ok) {
+	if (hndl == EXTENDED_HANDLER && mice[ref].extended_ok) {
 		mice[ref].dhi[comp] = hndl;
 	}
 	if (hndl == 0x01 || hndl == 0x02) {
@@ -103,21 +104,20 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg)
 {
 	if (active != comp) return;
 
-	if (reg == 0x00 && xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
-		if (mice[ref].pending) {
+	mouse *mse = &mice[ref];
+
+	if (reg == 0x00 && xSemaphoreTake(mse->sem, portMAX_DELAY)) {
+		if (mse->pending) {
 			uint8_t data[5];
-			util_mouse_encode(data,
-					mice[ref].x,
-					mice[ref].y,
-					mice[ref].buttons);
-			uint8_t len = (mice[ref].dhi[comp] == 0x04 ? 5 : 2);
-			if (computer_data_offer(active, mice[ref].drv_idx, 0, data, len)) {
-				mice[ref].pending = false;
-				mice[ref].x = 0;
-				mice[ref].y = 0;
+			util_mouse_encode(data, mse->x, mse->y, mse->buttons);
+			uint8_t len = (mse->dhi[comp] == EXTENDED_HANDLER ? 5 : 2);
+			if (computer_data_offer(active, mse->drv_idx, 0, data, len)) {
+				mse->pending = false;
+				mse->x = 0;
+				mse->y = 0;
 			}
 		}
-		xSemaphoreGive(mice[ref].sem);
+		xSemaphoreGive(mse->sem);
 	}
 }
 
@@ -137,13 +137,34 @@ bool mouse_update(uint8_t id, int16_t dx, int16_t dy, uint8_t btn)
 	if (active >= COMPUTER_COUNT) return false;
 	if (id >= mouse_count) return false;
 
-	if (xSemaphoreTake(mice[id].sem, portMAX_DELAY)) {
-		mice[id].x += dx;
-		mice[id].y += dy;
-		mice[id].buttons = btn;
-		xSemaphoreGive(mice[id].sem);
+	dbg("mse: x:%d, y:%d, btn:0x%02X", dx, dy, btn);
+
+	mouse *mse = &mice[id];
+
+	if (xSemaphoreTake(mse->sem, portMAX_DELAY)) {
+		mse->x += dx;
+		mse->y += dy;
+		mse->buttons = btn;
+
+		// encode the resulting output
+		uint8_t data_out[5];
+		util_mouse_encode(data_out, mse->x, mse->y, mse->buttons);
+		uint8_t data_out_len = mse->dhi[active] == EXTENDED_HANDLER ? 5 : 2;
+
+		// try to send data, or if send can't be done, store
+		if (computer_data_offer(active, mse->drv_idx, 0,
+				data_out, data_out_len)) {
+			mse->pending = false;
+			mse->x = 0;
+			mse->y = 0;
+		} else {
+			mse->pending = true;
+		}
+
+		xSemaphoreGive(mse->sem);
 		return true;
 	} else {
+		dbg("mse: drop rpt!");
 		return false;
 	}
 }
@@ -153,22 +174,23 @@ bool mouse_register(uint8_t *id, uint8_t *reg1)
 	if (mouse_count >= MAX_MICE) return false;
 
 	*id = mouse_count++;
+	mouse *mse = &mice[*id];
 
-	mice[*id].sem = xSemaphoreCreateMutex();
+	mse->sem = xSemaphoreCreateMutex();
 	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-		mice[*id].dhi[c] = DEFAULT_HANDLER;
+		mse->dhi[c] = DEFAULT_HANDLER;
 	}
-	assert(mice[*id].sem != NULL);
-	mice[*id].buttons = 0xFF;
+	assert(mse->sem != NULL);
+	mse->buttons = 0xFF;
 
-	if (! driver_register(&(mice[*id].drv_idx), &mouse_driver, *id)) {
+	if (! driver_register(&mse->drv_idx, &mouse_driver, *id)) {
 		return false;
 	}
 
 	if (reg1) {
-		mice[*id].extended_ok = true;
+		mse->extended_ok = true;
 		for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-			computer_data_set(c, mice[*id].drv_idx, 1, reg1, 8, true);
+			computer_data_set(c, mse->drv_idx, 1, reg1, 8, true);
 		}
 	}
 }
