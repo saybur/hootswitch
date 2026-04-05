@@ -22,7 +22,7 @@
 
 #include "drivers/joystick.h"
 #include "drivers/kensington.h"
-#include "drivers/keyboard.h"
+#include "drivers/keyboard_handler.h"
 #include "drivers/mouse.h"
 
 // the full list of possible device handlers
@@ -69,7 +69,7 @@ void handler_init(void)
 	 * ------------------------------------------------------------------------
 	 */
 
-	keyboard_init();
+	keyboard_handler_init();
 	mouse_init();
 	kensington_init();
 	joystick_init();

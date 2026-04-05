@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,14 +23,17 @@
 #include "computer.h"
 #include "debug.h"
 #include "driver.h"
-#include "handler.h"
 #include "hardware.h"
-#include "host.h"
-#include "host_err.h"
 
 #include "keyboard.h"
 
-// sets the most number of passthru keyboards permitted
+/*
+ * Driver (computer-side) implementation of an extended ADB keyboard.
+ *
+ * TODO: evaluate the extended part of this implementation for errors.
+ */
+
+// maximum number of supported computer-facing keyboards
 #define MAX_KEYBOARDS         4
 
 // how many Talk 0s from a keyboard are queued for sending to computers?
@@ -93,23 +96,17 @@ const uint8_t codes_to_comp_idx[] = {
 };
 
 typedef struct {
-	uint8_t length;
-	uint8_t data[2];
-} keyboard_message;
-
-typedef struct {
 	uint8_t dhi;
 	QueueHandle_t queue;
 	uint16_t reg2;
 } keyboard_memory;
 
 typedef struct {
-	uint8_t hdev;
 	uint8_t drv_idx;
-	bool extended;
 	keyboard_memory mem[COMPUTER_COUNT];
 	uint32_t down[4];
 	uint32_t sw_seq;
+	void (*reg2_callback)(uint8_t, uint16_t);
 } keyboard;
 
 static volatile uint8_t active;
@@ -173,19 +170,6 @@ static void reg2_update(uint8_t code, uint16_t *reg2)
 		// down key
 		*reg2 &= ~mask;
 	}
-}
-
-/*
- * Sends a blind Listen Register 2 to the keyboard with the given handler ID,
- * updating the low 3 bits of Register 2 with new LED information.
- */
-static void send_host_reg2(uint8_t hdev, uint16_t reg2)
-{
-	uint32_t id;
-	uint8_t send[2];
-	send[0] = (reg2 >> 8) & 0xFF;
-	send[1] = reg2 & 0xFF;
-	host_cmd(hdev, COMMAND_LISTEN_2, &id, send, 2);
 }
 
 /*
@@ -287,7 +271,9 @@ static void drvr_reset(uint8_t comp, uint32_t ref)
 		// physical keyboard's current pressed keys
 		send_down_keys(ref, comp);
 		// update keyboard LEDs accordingly (TODO eval how well this is done)
-		send_host_reg2(keyboards[ref].hdev, keyboards[ref].mem[comp].reg2);
+		if (keyboards[ref].reg2_callback) {
+			keyboards[ref].reg2_callback(ref, keyboards[ref].mem[comp].reg2);
+		}
 	}
 
 	set_comp_reg2(comp, keyboards[ref].drv_idx, keyboards[ref].mem[comp].reg2);
@@ -298,7 +284,9 @@ static void drvr_switch(uint8_t comp)
 	for (uint8_t i = 0; i < keyboard_count; i++) {
 		computer_psw(active, false);
 		keyboards[i].sw_seq = 0;
-		send_host_reg2(keyboards[i].hdev, keyboards[i].mem[comp].reg2);
+		if (keyboards[i].reg2_callback) {
+			keyboards[i].reg2_callback(i, keyboards[i].mem[comp].reg2);
+		}
 	}
 	active = comp;
 }
@@ -314,8 +302,8 @@ static void drvr_listen(uint8_t comp, uint32_t ref, uint8_t reg,
 		*reg2 = (*reg2 & 0xFFF8) | leds;
 
 		// if it is the active computer, update now
-		if (comp == active) {
-			send_host_reg2(keyboards[ref].hdev, *reg2);
+		if (comp == active && keyboards[ref].reg2_callback) {
+			keyboards[ref].reg2_callback(ref, *reg2);
 		}
 	}
 }
@@ -342,115 +330,64 @@ static dev_driver keyboard_driver = {
 	.set_handle_func = drvr_set_handle
 };
 
-/*
- * ----------------------------------------------------------------------------
- * --- Handler for Real ADB Keyboards -----------------------------------------
- * ----------------------------------------------------------------------------
- */
-
-static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8_t, bool))
-{
-	if (keyboard_count >= MAX_KEYBOARDS) return false;
-	if (info->address_def != 0x02) return false;
-//	if (! (info->dhid_cur >= 0x01 && info->dhid_cur <= 0x03)) return false;
-
-	dbg("    kdb assoc to %d at $%X", info->hdev, info->address_cur);
-	keyboard *kbd = &keyboards[keyboard_count];
-	kbd->hdev = info->hdev;
-	kbd->extended = handle_change(0x03, true);
-
-	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-		if (kbd->extended) {
-			kbd->mem[c].dhi = 0x03;
-		} else {
-			kbd->mem[c].dhi = 0x02;
-		}
-		kbd->mem[c].queue = xQueueCreate(KEYBOARD_QUEUE_DEPTH,
-				sizeof(keyboard_message));
-		assert(kbd->mem[c].queue != NULL);
-		kbd->mem[c].reg2 = DEFAULT_REGISTER_2;
-	}
-
-	driver_register(&kbd->drv_idx, &keyboard_driver, keyboard_count);
-	keyboard_count++;
-	return true;
-}
-
-static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
-		uint8_t *data, uint8_t data_len)
+void keyboard_enqueue(uint8_t id, keyboard_message *m)
 {
 	if (active >= COMPUTER_COUNT) return;
+	if (id >= keyboard_count) return;
 
-	uint8_t i;
-	for (i = 0; i < keyboard_count; i++) {
-		if (keyboards[i].hdev == hdev) break;
+	uint8_t hi = m->data[1];
+	uint8_t lo = m->data[0];
+
+	// handle power switch activation
+	if (lo == 0x7F && hi == 0x7F) {
+		computer_psw(active, true);
+	} else if (lo == 0xFF && hi == 0xFF) {
+		computer_psw(active, false);
 	}
-	if (i == keyboard_count) return;
 
-	if (data_len >= 2 && active < COMPUTER_COUNT) {
-		dbg("kbd: %d %d", data[0], data[1]);
-
-		// handle power switch activation
-		if (data[0] == 0x7F && data[1] == 0x7F) {
-			computer_psw(active, true);
-		} else if (data[0] == 0xFF && data[1] == 0xFF) {
-			computer_psw(active, false);
+	// handle switching
+	// hi==lo seems to happen sometimes on meta key up
+	if (hi == 0xFF || lo == hi) {
+		if (lo > 0x80) {
+			keyboards[id].sw_seq <<= 8;
+			keyboards[id].sw_seq += lo;
+		} else if (keyboards[id].sw_seq == SWITCH_SEQUENCE
+				&& lo >= ONE_KEY_DOWN
+				&& lo < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
+			// match, veto keystroke and switch instead
+			computer_switch(codes_to_comp_idx[lo - ONE_KEY_DOWN], true);
+			return;
 		}
-
-		// handle switching
-		// hi==lo seems to happen sometimes on meta key up
-		if (data[1] == 0xFF || data[0] == data[1]) {
-			if (data[0] > 0x80) {
-				keyboards[i].sw_seq <<= 8;
-				keyboards[i].sw_seq += data[0];
-			} else if (keyboards[i].sw_seq == SWITCH_SEQUENCE
-					&& data[0] >= ONE_KEY_DOWN
-					&& data[0] < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
-				// match, veto keystroke and switch instead
-				computer_switch(codes_to_comp_idx[data[0] - ONE_KEY_DOWN], true);
-				return;
-			}
-		} else {
-			keyboards[i].sw_seq = 0;
-		}
-
-		// set appropriate bits in Register 2 based on key state
-		// along with the map of keys pressed
-		uint16_t old_reg2 = keyboards[i].mem[active].reg2;
-		if (data[0] != 0xFF) {
-			reg2_update(data[0], &keyboards[i].mem[active].reg2);
-			down_update(data[0], keyboards[i].down);
-		}
-		if (data[1] != 0xFF) {
-			reg2_update(data[1], &keyboards[i].mem[active].reg2);
-			down_update(data[1], keyboards[i].down);
-		}
-
-		// update the real register if needed
-		if (old_reg2 != keyboards[i].mem[active].reg2) {
-			set_comp_reg2(active, keyboards[i].drv_idx,
-					keyboards[i].mem[active].reg2);
-		}
-
-		// enqueue data, dropping if queue is full
-		keyboard_message kb;
-		kb.length = 2;
-		kb.data[0] = data[0];
-		kb.data[1] = data[1];
-		xQueueSend(keyboards[i].mem[active].queue, &kb, 0);
+	} else {
+		keyboards[id].sw_seq = 0;
 	}
+
+	// set appropriate bits in Register 2 based on key state
+	// along with the map of keys pressed
+	uint16_t old_reg2 = keyboards[id].mem[active].reg2;
+	if (lo != 0xFF) {
+		reg2_update(lo, &keyboards[id].mem[active].reg2);
+		down_update(lo, keyboards[id].down);
+	}
+	if (hi != 0xFF) {
+		reg2_update(hi, &keyboards[id].mem[active].reg2);
+		down_update(hi, keyboards[id].down);
+	}
+
+	// update the real register if needed
+	if (old_reg2 != keyboards[id].mem[active].reg2) {
+		set_comp_reg2(active, keyboards[id].drv_idx,
+				keyboards[id].mem[active].reg2);
+	}
+
+	// enqueue data, dropping if queue is full
+	xQueueSend(keyboards[id].mem[active].queue, m, 0);
 }
 
-static ndev_handler keyboard_handler = {
-	.name = "kbd",
-	.accept_noop_talks = false,
-	.interview_func = hndl_interview,
-	.talk_func = hndl_talk,
-	.listen_func = NULL,
-	.flush_func = NULL,
-};
-
-void keyboard_init(void)
+bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))
 {
-	handler_register(&keyboard_handler);
+	if (keyboard_count >= MAX_KEYBOARDS) return false;
+	keyboards[keyboard_count].reg2_callback = reg2_callback;
+	*id = keyboard_count++;
+	return driver_register(&(keyboards[*id].drv_idx), &keyboard_driver, *id);
 }
