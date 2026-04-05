@@ -20,10 +20,10 @@
 #include "debug.h"
 #include "handler.h"
 
-#include "drivers/joystick.h"
+#include "drivers/joystick_handler.h"
 #include "drivers/kensington.h"
-#include "drivers/keyboard.h"
-#include "drivers/mouse.h"
+#include "drivers/keyboard_handler.h"
+#include "drivers/mouse_handler.h"
 
 // the full list of possible device handlers
 static ndev_handler handler_list[HANDLER_MAX];
@@ -69,8 +69,8 @@ void handler_init(void)
 	 * ------------------------------------------------------------------------
 	 */
 
-	keyboard_init();
-	mouse_init();
+	keyboard_handler_init();
+	mouse_handler_init();
 	kensington_init();
-	joystick_init();
+	joystick_handler_init();
 }

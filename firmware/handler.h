@@ -78,6 +78,8 @@
  *   update with any new DHI value). Return true to take control of the device,
  *   false otherwise. If a malfunction occurs that should block further use of
  *   the device by other handlers set `fault` within the given struct.
+ *   _Note_: as part of this interview function, the flag for allowing SRQs is
+ *   sent; if that feature is desired provide _true_ for the bool parameter.
  * - talk_func is called whenever the device has returned data from a
  *   Talk Register command. If you set `accept_noop_talks` to true, this will
  *   be called with a length of 0 whenever a no-op talk occurs, which can be

@@ -27,12 +27,17 @@
 #include "driver.h"
 
 /**
+ * Amount of time, in microseconds, to block during _offer() and _set() calls.
+ */
+#define COMPUTER_DATA_OFFER_TIMEOUT  1000
+
+/**
  * Places new data into the given Talk register if no existing data is present.
  *
- * This will wait for a short time if the register in question is in use due to
- * an ongoing Talk operation. If it times out it will return false. It will
- * also return false if there is existing data in the register that has not
- * yet been sent.
+ * This may block for up to COMPUTER_DATA_OFFER_TIMEOUT milliseconds if the
+ * register in question is in use due to an ongoing Talk operation. If it times
+ * out it will return false. It will also return false if there is existing
+ * data in the register that has not yet been sent.
  *
  * @param computer  the computer index to assign for.
  * @param drv_idx   the index that your driver/device assignment was originally
@@ -62,7 +67,7 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
  * @param drv_idx   the index that your driver/device assignment was originally
  *                  given during registration.
  * @param reg       the Talk register to assign, from 0-2.
- * @param data      the data to assign.
+ * @param data      the data to assign, may be NULL to clear kept data.
  * @param data_len  the length of the data to assign, from 0-8; anything less
  *                  than 2 will result in existing data being destroyed.
  * @param keep      if true, preserve data in the register between Talks.
