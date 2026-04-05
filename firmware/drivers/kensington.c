@@ -233,7 +233,7 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg, bool pri)
 	if (reg == 0 && xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
 		if (mice[ref].pending) {
 
-			util_mouse_encode(data, mice[ref].x, mice[ref].y, mice[ref].buttons);
+			util_mouse_encode(data, 0, mice[ref].x, mice[ref].y, mice[ref].buttons);
 			len = (extended || pri) ? 3 : 2;
 			if (computer_data_offer(active, drv_idx, 0, data, len)) {
 				mice[ref].pending = false;
@@ -463,7 +463,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 			// encode the resulting output
 			uint8_t data_out[5];
-			util_mouse_encode(data_out, xt, yt, buttons);
+			util_mouse_encode(data_out, 0, xt, yt, buttons);
 
 			// try to send data, or if send can't be done, store
 			if (computer_data_offer(active, drv_idx, 0,

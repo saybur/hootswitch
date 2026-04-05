@@ -58,11 +58,14 @@ uint8_t util_mouse_decode(uint8_t* data, uint8_t data_len,
  * just use bytes 0 and 1 in the array.
  *
  * @param data      output array of data values, at least 5 bytes long.
+ * @param rshift    number of bits to shift motion data to the right prior to
+ *                  encoding, to support fixed-point representations and/or
+ *                  simple scaling; 0 to not shift.
  * @param x         input X axis movement.
  * @param y         input Y axis movement.
  * @param buttons   input buttons, LSB button 1.
  */
-void util_mouse_encode(uint8_t* data,
-		int16_t x, int16_t y, uint8_t buttons);
+void util_mouse_encode(uint8_t* data, uint8_t rshift,
+		int32_t x, int32_t y, uint8_t buttons);
 
 #endif /* __UTIL_H__ */

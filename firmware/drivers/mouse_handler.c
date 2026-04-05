@@ -52,8 +52,7 @@
 typedef struct {
 	uint8_t hdev;
 	uint8_t idx;
-	uint8_t dhi[COMPUTER_COUNT];
-	bool extended;     // true if hardware mouse is in extended (0x04) mode
+	mouse_mode mode;
 } mouse;
 
 static mouse mice[MAX_MICE];
@@ -86,42 +85,33 @@ static bool hndl_interview(volatile ndev_info *info, bool (*handle_change)(uint8
 
 	// try to change the device to the extended mouse protocol
 	uint8_t *reg1 = NULL;
-	if (handle_change(0x04, true)) {
+	if (handle_change(MOUSE_MODE_EXTENDED, true)) {
 		// read and store register 1
 		uint8_t dev_reg1[8];
 		uint8_t dev_reg1_len;
 		host_sync_cmd(info->hdev, COMMAND_TALK_1, dev_reg1, &dev_reg1_len);
 		if (dev_reg1_len == 8) {
 			reg1 = dev_reg1;
-			mse->extended = true;
+			mse->mode = MOUSE_MODE_EXTENDED;
 		} else {
-			// not valid extended response, reset to original handler
-			dbg_err("mse: dev %d dhid 4 bad reg1", info->hdev);
+			// not valid extended response, reset to original handler and
+			// drop the device, it likely (?) is not a standard mouse
+			dbg_err("mse: dev %d dhid 4 bad reg1, dropped", info->hdev);
 			handle_change(info->dhid_def, true);
-		}
-	}
-
-	// make sure device is in a valid mode
-	if (! (info->dhid_cur == 0x01
-			|| info->dhid_cur == 0x02
-			|| info->dhid_cur == 0x04)) {
-		// already tried extended, move to basic protocol
-		if (! handle_change(0x01, true)) {
-			// failed to accept, must not be a mouse?
-			dbg_err("mse: dev %d reject dhid 1, dropped", info->hdev);
 			return false;
 		}
-	}
-
-	// for emulation, start at device handler 1 until changed
-	for (uint8_t c = 0; c < COMPUTER_COUNT; c++) {
-		mse->dhi[c] = DEFAULT_HANDLER;
+	} else if (handle_change(MOUSE_MODE_200CPI, true)) {
+		mse->mode = MOUSE_MODE_200CPI;
+	} else if (handle_change(MOUSE_MODE_100CPI, true)) {
+		mse->mode = MOUSE_MODE_100CPI;
+	} else {
+		dbg_err("mse: dev %d reject dhid 1, dropped", info->hdev);
+		return false;
 	}
 
 	// finally register with the mouse driver
-	mouse_register(&mse->idx, reg1);
+	mouse_register(&mse->idx, mse->mode, reg1);
 	mouse_count++;
-
 	return true;
 }
 
