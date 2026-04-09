@@ -24,6 +24,7 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "serial.h"
+#include "virtual.h"
 
 /*
  * Driver for sending UART keystrokes via the standard mouse protocol.
@@ -35,8 +36,6 @@
  */
 
 static uint8_t command;
-static uint8_t kbd_idx;
-static uint8_t mse_idx;
 static uint8_t mse_cache[2];
 
 /*
@@ -51,7 +50,7 @@ static void serial_kbd_send(bool up, uint8_t c)
 	msg.length = 2;
 	msg.data[0] = (up ? 0x80 : 0x00) | (c & 0x7F);
 	msg.data[1] = 0xFF;
-	keyboard_enqueue(kbd_idx, &msg);
+	keyboard_enqueue(virtual_keyboard_id(), &msg);
 }
 
 static void serial_mse_send()
@@ -59,7 +58,7 @@ static void serial_mse_send()
 	int16_t x, y;
 	uint8_t btn;
 	util_mouse_decode(mse_cache, 2, &x, &y, &btn);
-	mouse_update(mse_idx, x, y, btn);
+	mouse_update(virtual_mouse_id(), x, y, btn);
 }
 
 void serial_enqueue(uint8_t c) {
@@ -97,10 +96,4 @@ void serial_enqueue(uint8_t c) {
 			break;
 		}
 	}
-}
-
-void serial_init(void)
-{
-	mouse_register(&mse_idx, MOUSE_MODE_100CPI, NULL);
-	keyboard_register(&kbd_idx, NULL);
 }

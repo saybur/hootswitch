@@ -19,6 +19,5 @@
 #define SER_CMD_KBD_UP        0x87
 
 void serial_enqueue(uint8_t);
-void serial_init(void);
 
 #endif /* __SERIAL_H__ */

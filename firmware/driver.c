@@ -12,7 +12,7 @@
 #include "driver.h"
 #include "hardware.h"
 
-#include "drivers/serial.h"
+#include "drivers/virtual.h"
 
 static dev_driver *device_list[DEVICE_MAX];
 static uint32_t references[DEVICE_MAX];
@@ -64,5 +64,5 @@ void driver_init(void)
 	 * ------------------------------------------------------------------------
 	 */
 
-	serial_init();
+	virtual_init();
 }
