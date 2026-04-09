@@ -64,3 +64,5 @@ _most definitely_ not an authority on `gdb`):
 * `p X` prints variable X.
 * `p/x *0x0` prints in hex from the address, useful for peripheral registers.
 * `i threads` prints information relevant to FreeRTOS thread execution.
+
+Use `arm-none-eabi-size -A hootswitch.elf` to get an idea about RAM usage.
