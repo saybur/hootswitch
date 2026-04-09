@@ -7,8 +7,8 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
 #include "hardware/gpio.h"
 
 #include "FreeRTOS.h"
@@ -32,6 +32,16 @@
 #define DEFAULT_STACK      configMINIMAL_STACK_SIZE
 #define DEFAULT_PRIORITY   (tskIDLE_PRIORITY + 1U)
 #define DISPATCH_PRIORITY  (tskIDLE_PRIORITY + 2U)
+
+// https://stackoverflow.com/a/2220565
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+	dbg_err("___stack overflow!___ %s", pcTaskName);
+	while (1);
+}
+#pragma GCC pop_options
 
 static void init_hardware(void)
 {
@@ -73,10 +83,10 @@ static void init_task(__unused void *parameters)
 			bool led = false;
 			while (! stdio_usb_connected()) {
 				vTaskDelay(100);
-				cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led);
+				led_activity(led);
 				led = !led;
 			}
-			cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+			led_activity(false);
 			break;
 	}
 
@@ -111,8 +121,8 @@ static void init_task(__unused void *parameters)
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(control_task, "control", configMINIMAL_STACK_SIZE,
 			NULL, tskIDLE_PRIORITY, NULL);
-	xTaskCreate(bt_task, "bt_dev", DEFAULT_STACK,
-			NULL, configMAX_PRIORITIES - 2, NULL);
+
+	bt_init();
 
 	vTaskDelete(NULL);
 }
@@ -121,10 +131,6 @@ int main(void)
 {
 	usb_dev_init();
 	stdio_init_all();
-	if (cyw43_arch_init()) {
-		panic("unable to init cyw43, is this a Pico W?");
-	}
-	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 
 	init_hardware();
 
@@ -133,7 +139,5 @@ int main(void)
 	xTaskCreate(usb_dev_task, "usb_dev", DEFAULT_STACK * 3,
 			NULL, configMAX_PRIORITIES - 1, NULL);
 
-	while (true) {
-		vTaskStartScheduler();
-	}
+	vTaskStartScheduler();
 }

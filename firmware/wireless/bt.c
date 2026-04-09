@@ -24,10 +24,15 @@
 
 #include "debug.h"
 
+#include "mouse.h"
+#include "virtual.h"
+
 // sanity check
 #ifndef CONFIG_BLUEPAD32_PLATFORM_CUSTOM
 #error "Pico W must use BLUEPAD32_PLATFORM_CUSTOM"
 #endif
+
+static uint32_t stack_high_water;
 
 static void my_platform_init(int argc, const char** argv)
 {
@@ -52,6 +57,12 @@ static uni_error_t my_platform_on_device_discovered(bd_addr_t addr,
 {
 	dbg("bt on_device_discovered(): %d");
 
+	uint32_t s = uxTaskGetStackHighWaterMark(NULL);
+	if (s != stack_high_water) {
+		dbg("bt: %s %d", pcTaskGetName(NULL), s);
+		stack_high_water = s;
+	}
+
 	return UNI_ERROR_SUCCESS;
 }
 
@@ -75,19 +86,14 @@ static uni_error_t my_platform_on_device_ready(uni_hid_device_t* d)
 static void my_platform_on_controller_data(uni_hid_device_t* d,
 		uni_controller_t* ctl)
 {
-	static uint8_t leds = 0;
-	static uint8_t enabled = true;
-	static uni_controller_t prev = {0};
-	uni_gamepad_t* gp;
+//	dbg("bt (%p) id=%d ", d, uni_hid_device_get_idx_for_instance(d));
+//	uni_controller_dump(ctl);
 
-	// Used to prevent spamming the log, but should be removed in production.
-	//	if (memcmp(&prev, ctl, sizeof(*ctl)) == 0) {
-	//		return;
-	//	}
-	prev = *ctl;
-
-	dbg("bt (%p) id=%d ", d, uni_hid_device_get_idx_for_instance(d));
-	uni_controller_dump(ctl);
+	uint32_t s = uxTaskGetStackHighWaterMark(NULL);
+	if (s != stack_high_water) {
+		dbg("bt: %s %d", pcTaskGetName(NULL), s);
+		stack_high_water = s;
+	}
 
 	switch (ctl->klass) {
 		case UNI_CONTROLLER_CLASS_GAMEPAD:
@@ -99,7 +105,13 @@ static void my_platform_on_controller_data(uni_hid_device_t* d,
 			break;
 
 		case UNI_CONTROLLER_CLASS_MOUSE:
-			uni_mouse_dump(&ctl->mouse);
+//			uni_mouse_dump(&ctl->mouse);
+
+			mouse_update(virtual_mouse_id(),
+					ctl->mouse.delta_x,
+					ctl->mouse.delta_y,
+					~(ctl->mouse.buttons));
+
 			break;
 
 		case UNI_CONTROLLER_CLASS_KEYBOARD:
@@ -152,12 +164,39 @@ struct uni_platform* get_my_platform(void)
 	return &platform;
 }
 
-void bt_task(void *params)
+static void bt_do_work(
+		__unused async_context_t *context,
+		__unused async_when_pending_worker_t *worker)
 {
+	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 	uni_platform_set_custom(get_my_platform());
 	uni_init(0, NULL);
-	btstack_run_loop_execute();
-	while (true) {
-		vTaskDelay(1000);
+}
+static async_when_pending_worker_t bt_worker = { .do_work = bt_do_work };
+
+void bt_init(void)
+{
+	if (cyw43_arch_init()) {
+		panic("unable to init cyw43, is this a Pico W?");
 	}
+
+	/*
+	 * This required a fair bit of trial-and-error, the mix of btstack,
+	 * bluepad32, and FreeRTOS has some confusing quirks. As I understand it,
+	 * using the pico_cyw43_arch_sys_freertos library will make the above
+	 * cyw43_arch_init() use cyw43_arch_freertos.c and a separate async_context
+	 * for thread safety using a created FreeRTOS task. To make btstack and
+	 * bluepad32 stay on that same thread the following submits their
+	 * initialization to the async_context. Seems (?) like btstack is aware of
+	 * this difference and 'just works' without the usual
+	 * btstack_run_loop_execute(). Bluepad32 needed a change to its build
+	 * information:
+	 *
+	 * - Remove pico_cyw43_arch_none
+	 * - Add pico_cyw43_arch_sys_freertos and FreeRTOS-Kernel-Heap4
+	 * - Add target_compile_definitions(bluepad32 PRIVATE CYW43_LWIP=0) to keep
+	 *   LWIP from being compiled in.
+	 */
+	async_context_add_when_pending_worker(cyw43_arch_async_context(), &bt_worker);
+	async_context_set_work_pending(cyw43_arch_async_context(), &bt_worker);
 }

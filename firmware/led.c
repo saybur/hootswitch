@@ -7,7 +7,6 @@
  */
 
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
 
@@ -22,11 +21,6 @@ typedef struct {
 	uint8_t chan;
 } led_c;
 static led_c leds[LED_C_COUNT];
-
-void led_board(bool state)
-{
-	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, state);
-}
 
 void led_activity(bool state)
 {

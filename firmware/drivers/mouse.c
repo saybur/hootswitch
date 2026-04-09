@@ -182,7 +182,7 @@ bool mouse_update(uint8_t id, int32_t dx, int32_t dy, uint8_t btn)
 
 	mouse *mse = &mice[id];
 	uint8_t rshift = mouse_rshift(mse);
-	dbg("mse: x:%d, y:%d, btn:0x%02X, rs:%d", dx, dy, btn, rshift);
+//	dbg("mse: x:%d, y:%d, btn:0x%02X, rs:%d", dx, dy, btn, rshift);
 
 	if (xSemaphoreTake(mse->sem, portMAX_DELAY)) {
 		// with data locked, update with new values

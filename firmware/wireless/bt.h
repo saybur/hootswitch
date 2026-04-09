@@ -9,6 +9,6 @@
 #ifndef __BT_H__
 #define __BT_H__
 
-void bt_task(void *params);
+void bt_init(void);
 
 #endif /* __BT_H__ */
