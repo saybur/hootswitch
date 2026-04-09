@@ -814,7 +814,7 @@ void computer_init(void)
 	rand_idx = (uint8_t) (get_rand_32() % sizeof(randt));
 
 	// setup storage
-	uint8_t sm_mask;
+	uint8_t sm_mask = 0;
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		sm_mask |= (1U << i);
 		computers[i] = (computer_t) {
