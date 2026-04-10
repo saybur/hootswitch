@@ -24,7 +24,6 @@
 
 #include "debug.h"
 
-#include "mouse.h"
 #include "virtual.h"
 
 // sanity check
@@ -33,6 +32,8 @@
 #endif
 
 static uint32_t stack_high_water;
+
+static virtual_mouse_data mse_data;
 
 static void my_platform_init(int argc, const char** argv)
 {
@@ -107,10 +108,10 @@ static void my_platform_on_controller_data(uni_hid_device_t* d,
 		case UNI_CONTROLLER_CLASS_MOUSE:
 //			uni_mouse_dump(&ctl->mouse);
 
-			mouse_update(virtual_mouse_id(),
-					ctl->mouse.delta_x,
-					ctl->mouse.delta_y,
-					~(ctl->mouse.buttons));
+			mse_data.x = ctl->mouse.delta_x;
+			mse_data.y = ctl->mouse.delta_y;
+			mse_data.buttons = ~(ctl->mouse.buttons);
+			virtual_mouse_offer(&mse_data);
 
 			break;
 

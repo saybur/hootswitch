@@ -9,8 +9,16 @@
 #ifndef __VIRTUAL_H__
 #define __VIRTUAL_H__
 
+#include <stdbool.h>
+
+typedef struct {
+	int32_t x, y;
+	uint8_t buttons;
+} virtual_mouse_data;
+
 uint8_t virtual_keyboard_id(void);
 uint8_t virtual_mouse_id(void);
+bool virtual_mouse_offer(virtual_mouse_data *data);
 
 void virtual_init(void);
 

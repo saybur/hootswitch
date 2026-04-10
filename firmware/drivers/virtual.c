@@ -9,6 +9,10 @@
 #include <stdbool.h>
 #include "pico/stdlib.h"
 
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "debug.h"
+
 #include "keyboard.h"
 #include "mouse.h"
 #include "virtual.h"
@@ -20,24 +24,106 @@
  * virtual device, then use that value with the relevant driver calls.
  */
 
+#define MSE_QUEUE_DEPTH 16
+
 static bool active;
 static uint8_t kbd_idx;
 static uint8_t mse_idx;
 
+static QueueHandle_t mse_queue;
+
+static void virtual_device_task(__unused void *parameters)
+{
+	bool valid = false;
+	virtual_mouse_data scratch, send;
+	dbg("virt-mse: queue start");
+
+	while (true) {
+		/*
+		 * Unless we already have something to work with, block until there
+		 * is data; otherwise proceed to the compaction stage.
+		 */
+		if (!valid) {
+			if (pdPASS != xQueueReceive(mse_queue, &send, portMAX_DELAY)) {
+				// failed to get a result, try again
+				continue;
+			}
+		}
+
+		// setup for reusing validity below
+		valid = false;
+
+		/*
+		 * Drain the queue until 1) nothing is left, or 2) mouse buttons
+		 * change state, which can't be compacted into a single report.
+		 */
+		while (pdPASS == xQueueReceive(mse_queue, &scratch, 0)) {
+			if (send.buttons != scratch.buttons) {
+				// result incompressible, prepare to set aside
+				valid = true;
+				break;
+			} else {
+				send.x += scratch.x;
+				send.y += scratch.y;
+			}
+		}
+
+		// send the results
+		if (mouse_update(mse_idx, send.x, send.y, send.buttons)) {
+			// good response, keep incompressible data for next loop if present
+			if (valid) {
+				send = scratch;
+			}
+		} else {
+			/*
+			 * Unable to enqueue 'send'; leaving the value alone for the next
+			 * iteration is fine unless there is also an incompressible item
+			 * from the queue. If there is one, put it back into the queue if
+			 * there's space. If there isn't, drop that report and emit a
+			 * warning (if this happens we're obviously running way faster than
+			 * the ADB side or there's a programming problem).
+			 */
+			if (valid) {
+				if (pdPASS != xQueueSendToFront(mse_queue, &scratch, 0)) {
+					// just drop the second report
+					dbg_err("virt-mse: queue overflow");
+				}
+			} else {
+				// leave send alone for enqueuing next time
+				valid = true;
+			}
+		}
+	}
+}
+
 uint8_t virtual_mouse_id(void)
 {
-	return kbd_idx;
+	return mse_idx;
 }
 
 uint8_t virtual_keyboard_id(void)
 {
-	return mse_idx;
+	return kbd_idx;
+}
+
+bool virtual_mouse_offer(virtual_mouse_data *data)
+{
+	if (!data) return false;
+	return pdPASS == xQueueSend(mse_queue, data, 0);
 }
 
 void virtual_init(void)
 {
 	if (active) return;
 	active = true;
-	mouse_register(&mse_idx, MOUSE_MODE_100CPI, NULL);
+	uint8_t mse_reg1[8] = { 'H', 'o', 'o', 't', 1, 144, 1, 8 }; // 400cpi
+	mouse_register(&mse_idx, MOUSE_MODE_EXTENDED, mse_reg1);
 	keyboard_register(&kbd_idx, NULL);
+
+	mse_queue = xQueueCreate(MSE_QUEUE_DEPTH,
+				sizeof(virtual_mouse_data));
+	assert(mse_queue != NULL);
+
+	xTaskCreate(virtual_device_task, "virtual_dev", configMINIMAL_STACK_SIZE,
+			NULL, tskIDLE_PRIORITY + 1, NULL);
 }
