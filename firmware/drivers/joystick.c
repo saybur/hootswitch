@@ -164,10 +164,8 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 		default:
 			int8_t x = jdata->x1;
 			int8_t y = jdata->y1;
-			// decrease mouse movement radius to avoid wild pointer behavior
-			uint8_t rshift = 3;
 			// store as mouse movement
-			util_mouse_encode(odata, rshift, x, y, jdata->buttons);
+			util_mouse_encode(odata, x, y, jdata->buttons);
 			odata_len = 2;
 	}
 

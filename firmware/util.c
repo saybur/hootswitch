@@ -77,18 +77,10 @@ uint8_t util_mouse_decode(uint8_t* data, uint8_t data_len,
 	return 0;
 }
 
-void util_mouse_encode(uint8_t* data, uint8_t rshift,
-		int32_t x, int32_t y, uint8_t buttons)
+void util_mouse_encode(uint8_t* data, int16_t x, int16_t y, uint8_t buttons)
 {
-	uint32_t ix = x;
-	uint32_t iy = y;
-
-	if (rshift > 16) rshift = 16;
-	if (rshift > 0)
-	{
-		ix >>= rshift;
-		iy >>= rshift;
-	}
+	uint16_t ix = x;
+	uint16_t iy = y;
 
 	data[0] = iy & 0x7F;
 	data[1] = ix & 0x7F;

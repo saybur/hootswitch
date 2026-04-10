@@ -50,15 +50,18 @@ static void serial_kbd_send(bool up, uint8_t c)
 	msg.length = 2;
 	msg.data[0] = (up ? 0x80 : 0x00) | (c & 0x7F);
 	msg.data[1] = 0xFF;
+	if (msg.data[0] == 0x7F) {
+		// protocol requires power key be sent twice in one packet
+		msg.data[1] = msg.data[0];
+	}
 	keyboard_enqueue(virtual_keyboard_id(), &msg);
 }
 
 static void serial_mse_send()
 {
-	int16_t x, y;
-	uint8_t btn;
-	util_mouse_decode(mse_cache, 2, &x, &y, &btn);
-	mouse_update(virtual_mouse_id(), x, y, btn);
+	virtual_mouse_data data;
+	util_mouse_decode(mse_cache, 2, &(data.x), &(data.y), &(data.buttons));
+	virtual_mouse_offer(&data);
 }
 
 void serial_enqueue(uint8_t c) {

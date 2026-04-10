@@ -43,10 +43,10 @@ bool mouse_register(uint8_t *id, mouse_mode mode, uint8_t *reg1);
  * DHID/extended state with the computer(s).
  *
  * @param id   the ID to use from the original registration call.
- * @param dx   change in X-axis position.
- * @param dy   change in Y-axis position.
+ * @param x    change in X-axis position.
+ * @param y    change in Y-axis position.
  * @param btn  button state bitmask following ADB convention: 0=down, LSB b1
  */
-bool mouse_update(uint8_t id, int32_t dx, int32_t dy, uint8_t btn);
+bool mouse_update(uint8_t id, int16_t x, int16_t y, uint8_t btn);
 
 #endif /* __MOUSE_H__ */

@@ -7,7 +7,7 @@
  */
 
 const baud = 115200;
-const movementDivisor = 8;
+const movementDivisor = 4;
 const computers = 4;
 const vid = 0x1209; // pid.codes
 const pid = 0x6804; // hootswitch PID from pid.codes

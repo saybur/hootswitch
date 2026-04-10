@@ -20,6 +20,7 @@ target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/usb)
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/drivers)
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/wireless)
+target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib)
 
 # generates .su files for stack analysis if needed
 # target_compile_options(hootswitch PRIVATE -fstack-usage)

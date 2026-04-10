@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 typedef struct {
-	int32_t x, y;
+	int16_t x, y;
 	uint8_t buttons;
 } virtual_mouse_data;
 
