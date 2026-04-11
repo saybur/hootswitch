@@ -19,6 +19,10 @@
 #include "computer.h"
 #include "hardware.h"
 
+#ifdef HOOTSWITCH_WIRELESS
+#include "btscan.h"
+#endif
+
 #define SAMPLE_RATE_IN_MS 20
 
 #define HOLD_TIME_SCAN   3000000L   // 3s
@@ -27,8 +31,11 @@
 static void button_apply(uint64_t duration)
 {
 	if (duration > HOLD_TIME_SCAN) {
-		// TODO implement
+#ifdef HOOTSWITCH_WIRELESS
+		bt_scan();
+#else
 		computer_switch(255, true);
+#endif
 	} else if (duration > HOLD_TIME_SWITCH) {
 		computer_switch(255, true);
 	}

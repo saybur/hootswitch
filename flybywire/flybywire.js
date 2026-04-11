@@ -243,6 +243,13 @@ function switcherSetup()
 }
 switcherSetup();
 
+function bluetoothScan()
+{
+	if (! port) return;
+	const a = new Uint8Array([0x88]);
+	writer.write(a);
+}
+
 /*
  * ----------------------------------------------------------------------------
  *   "About" Text

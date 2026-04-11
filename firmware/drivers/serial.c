@@ -24,6 +24,10 @@
 #include "serial.h"
 #include "virtual.h"
 
+#ifdef HOOTSWITCH_WIRELESS
+#include "btscan.h"
+#endif
+
 /*
  * Driver for sending UART keystrokes via the standard mouse protocol.
  *
@@ -68,6 +72,11 @@ void serial_enqueue(uint8_t c) {
 			break;
 		case SER_CMD_MSE_APPLY:
 			serial_mse_send();
+			break;
+		case SER_CMD_BTSCAN:
+#ifdef HOOTSWITCH_WIRELESS
+			bt_scan();
+#endif
 			break;
 		}
 	} else {

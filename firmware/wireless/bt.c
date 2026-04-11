@@ -26,12 +26,16 @@
 
 #include "virtual.h"
 
+#include "bt.h"
+#include "btscan.h"
+
 // sanity check
 #ifndef CONFIG_BLUEPAD32_PLATFORM_CUSTOM
 #error "Pico W must use BLUEPAD32_PLATFORM_CUSTOM"
 #endif
 
 static uint32_t stack_high_water;
+static bool initial_scan = true;
 
 static virtual_mouse_data mse_data;
 
@@ -47,10 +51,11 @@ static void my_platform_on_init_complete(void)
 {
 	dbg("bt on_init_complete()");
 
-	uni_bt_start_scanning_and_autoconnect_unsafe();
 	uni_bt_list_keys_unsafe();
 	uni_bt_service_set_enabled(true);
 	uni_property_dump_all();
+
+	bt_scan();
 }
 
 static uni_error_t my_platform_on_device_discovered(bd_addr_t addr,
@@ -80,6 +85,16 @@ static void my_platform_on_device_disconnected(uni_hid_device_t* d)
 static uni_error_t my_platform_on_device_ready(uni_hid_device_t* d)
 {
 	dbg("bt: device ready: %p", d);
+
+	/*
+	 * Most devices seem to only allow one device to join per scan cycle,
+	 * stop scan at this point to meet likely user expectations. Exception:
+	 * if this is the startup scan keep going to join other pre-paired devices
+	 * that are on.
+	 */
+	if (! initial_scan) {
+		uni_bt_stop_scanning_unsafe();
+	}
 
 	return UNI_ERROR_SUCCESS;
 }
@@ -140,6 +155,14 @@ static void my_platform_on_oob_event(uni_platform_oob_event_t event, void* data)
 
 		case UNI_PLATFORM_OOB_BLUETOOTH_ENABLED:
 			dbg("bt on_oob_event: bt enabled: %d", (bool)(data));
+
+			/*
+			 * The first time scanning stops clear this flag to make subsequent
+			 * sessions pair only one device at a time.
+			 */
+			if (!((bool)(data))) {
+				initial_scan = false;
+			}
 			break;
 
 		default:
@@ -200,4 +223,7 @@ void bt_init(void)
 	 */
 	async_context_add_when_pending_worker(cyw43_arch_async_context(), &bt_worker);
 	async_context_set_work_pending(cyw43_arch_async_context(), &bt_worker);
+
+	// setup the separate system that calls back to start/stop scanning
+	bt_scan_init();
 }

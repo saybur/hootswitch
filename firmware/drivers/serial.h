@@ -17,6 +17,7 @@
 #define SER_CMD_SWITCH        0x85
 #define SER_CMD_KBD_DOWN      0x86
 #define SER_CMD_KBD_UP        0x87
+#define SER_CMD_BTSCAN        0x88
 
 void serial_enqueue(uint8_t);
 
