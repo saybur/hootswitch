@@ -19,8 +19,9 @@ typedef struct {
  *
  * @param id  the ID to use from the original registration call.
  * @param m   the message to enqueue.
+ * @return    true if the message was enqueued, false otherwise.
  */
-void keyboard_enqueue(uint8_t id, keyboard_message *m);
+bool keyboard_enqueue(uint8_t id, keyboard_message *m);
 
 /**
  * Registers a computer-facing keyboard and assigns it for exclusive use to

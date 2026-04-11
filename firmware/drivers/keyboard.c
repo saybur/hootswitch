@@ -6,6 +6,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+#include <stdbool.h>
 #include "pico/stdlib.h"
 
 #include "FreeRTOS.h"
@@ -321,10 +322,10 @@ static dev_driver keyboard_driver = {
 	.set_handle_func = drvr_set_handle
 };
 
-void keyboard_enqueue(uint8_t id, keyboard_message *m)
+bool keyboard_enqueue(uint8_t id, keyboard_message *m)
 {
-	if (active >= COMPUTER_COUNT) return;
-	if (id >= keyboard_count) return;
+	if (active >= COMPUTER_COUNT) return false;
+	if (id >= keyboard_count) return false;
 
 	uint8_t hi = m->data[1];
 	uint8_t lo = m->data[0];
@@ -349,7 +350,7 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 				&& lo < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
 			// match, veto keystroke and switch instead
 			computer_switch(codes_to_comp_idx[lo - ONE_KEY_DOWN], true);
-			return;
+			return false;
 		}
 	} else {
 		keyboards[id].sw_seq = 0;
@@ -374,7 +375,7 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 	}
 
 	// enqueue data, dropping if queue is full
-	xQueueSend(keyboards[id].mem[active].queue, m, 0);
+	return pdPASS == xQueueSend(keyboards[id].mem[active].queue, m, 0);
 }
 
 bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))

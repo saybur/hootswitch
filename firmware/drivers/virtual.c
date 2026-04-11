@@ -96,14 +96,17 @@ static void virtual_device_task(__unused void *parameters)
 	}
 }
 
-uint8_t virtual_mouse_id(void)
+bool virtual_keyboard_offer(bool up, uint8_t c)
 {
-	return mse_idx;
-}
-
-uint8_t virtual_keyboard_id(void)
-{
-	return kbd_idx;
+	keyboard_message msg;
+	msg.length = 2;
+	msg.data[0] = (up ? 0x80 : 0x00) | (c & 0x7F);
+	msg.data[1] = 0xFF;
+	if (msg.data[0] == 0x7F) {
+		// protocol requires power key be sent twice in one packet
+		msg.data[1] = msg.data[0];
+	}
+	return keyboard_enqueue(kbd_idx, &msg);
 }
 
 bool virtual_mouse_offer(virtual_mouse_data *data)

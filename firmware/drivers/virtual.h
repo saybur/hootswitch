@@ -16,8 +16,7 @@ typedef struct {
 	uint8_t buttons;
 } virtual_mouse_data;
 
-uint8_t virtual_keyboard_id(void);
-uint8_t virtual_mouse_id(void);
+bool virtual_keyboard_offer(bool up, uint8_t c);
 bool virtual_mouse_offer(virtual_mouse_data *data);
 
 void virtual_init(void);
