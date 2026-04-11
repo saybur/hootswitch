@@ -25,7 +25,10 @@
 #include "hardware.h"
 #include "led.h"
 #include "usb.h"
+
+#ifdef HOOTSWITCH_WIRELESS
 #include "bt.h"
+#endif
 
 #define PROGRAM_NAME       "hootswitch-v20250426"
 
@@ -122,7 +125,9 @@ static void init_task(__unused void *parameters)
 	xTaskCreate(control_task, "control", configMINIMAL_STACK_SIZE,
 			NULL, tskIDLE_PRIORITY, NULL);
 
+#ifdef HOOTSWITCH_WIRELESS
 	bt_init();
+#endif
 
 	vTaskDelete(NULL);
 }
