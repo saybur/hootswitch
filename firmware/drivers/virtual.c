@@ -125,5 +125,5 @@ void virtual_init(void)
 	assert(mse_queue != NULL);
 
 	xTaskCreate(virtual_device_task, "virtual_dev", configMINIMAL_STACK_SIZE,
-			NULL, tskIDLE_PRIORITY + 1, NULL);
+			NULL, tskIDLE_PRIORITY + 2, NULL);
 }
