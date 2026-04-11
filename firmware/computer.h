@@ -69,6 +69,20 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep);
 
 /**
+ * Indicates whether data is waiting in this register to be sent. This is a
+ * non-atomic check and may be out of date as soon as it returns. It may still
+ * be useful for certain fast-polling devices that operate at a large margin
+ * of the ADB bus speed to keep them from overloading the system.
+ *
+ * @param computer  the computer index to check.
+ * @param drv_idx   the index that your driver/device assignment was originally
+ *                  given during registration.
+ * @param reg       the Talk register to check, from 0-2.
+ * @return          true if data is waiting, false if not.
+ */
+bool computer_data_waiting(uint8_t comp, uint8_t drv_idx, uint8_t reg);
+
+/**
  * Reports if one or more computers have experienced a reset pulse. Used to
  * determine if a device reset is appropriate during a serial connection.
  *

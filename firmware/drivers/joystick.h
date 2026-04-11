@@ -25,10 +25,21 @@ typedef enum {
  *    (0) is pressed.
  */
 typedef struct {
-	int8_t x1, y1;
-	int8_t x2, y2;
+	int8_t x, y;
+	uint8_t brake, throttle;
 	uint32_t buttons;
 } joystick_data;
+
+/**
+ * General indicator for whether the joystick driver has been configured to a
+ * non-standard handler by the active computer. This can be used as an
+ * indicator of whether a Mac driver has loaded on this system for the device.
+ * Even when not enabled mouse emulation should (theoretically) be present.
+ *
+ * @param id  the ID provided at registration time.
+ * @return    true if the joystick has been set to a non-standard handler.
+ */
+bool joystick_enabled(uint8_t id);
 
 /**
  * Registers a computer-facing keyboard and assigns it for exclusive use to
@@ -56,5 +67,15 @@ bool joystick_register(uint8_t *id, joystick_mode mode);
  * @param *jdata  the data to apply, as above.
  */
 void joystick_update(uint8_t id, joystick_data *jdata);
+
+/**
+ * Indicates whether data is waiting to be sent for the joystick. This can be
+ * used to help rate-limit certain devices when needed.
+ *
+ * This will return true if there is no valid computer to send to.
+ *
+ * @return  true if data is waiting to be sent, false otherwise.
+ */
+bool joystick_waiting(uint8_t id);
 
 #endif /* __JOYSTICK_H__ */

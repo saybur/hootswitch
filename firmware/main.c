@@ -113,7 +113,6 @@ static void init_task(__unused void *parameters)
 
 	driver_init();
 	computer_start();
-	computer_switch(1, true);
 	control_start();
 
 	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
@@ -128,6 +127,9 @@ static void init_task(__unused void *parameters)
 #ifdef HOOTSWITCH_WIRELESS
 	bt_init();
 #endif
+
+	// may be vulnerable to drivers not being hooked but we'll try anyway
+	computer_switch(1, true);
 
 	vTaskDelete(NULL);
 }

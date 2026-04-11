@@ -13,6 +13,7 @@
 #include "queue.h"
 #include "debug.h"
 
+#include "joystick.h"
 #include "keyboard.h"
 #include "mouse.h"
 #include "virtual.h"
@@ -29,6 +30,7 @@
 static bool active;
 static uint8_t kbd_idx;
 static uint8_t mse_idx;
+static uint8_t joy_idx;
 
 static QueueHandle_t mse_queue;
 
@@ -107,6 +109,11 @@ bool virtual_keyboard_offer(bool up, uint8_t c)
 		msg.data[1] = msg.data[0];
 	}
 	return keyboard_enqueue(kbd_idx, &msg);
+}
+
+uint8_t virtual_keyboard_index(void)
+{
+	return kbd_idx;
 }
 
 bool virtual_mouse_offer(virtual_mouse_data *data)

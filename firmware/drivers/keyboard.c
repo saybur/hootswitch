@@ -194,6 +194,17 @@ static void down_update(uint8_t code, uint32_t *down)
 }
 
 /**
+ * Returns true if the down bit is set, false otherwise.
+ */
+static bool key_is_down(uint8_t code, uint32_t *down)
+{
+	uint8_t key = code & 0x7F;
+	uint8_t idx = key >> 5;
+	uint32_t mask = 1U << (key & 0x1F);
+	return down[idx] & mask;
+}
+
+/**
  * Called following a computer reset to send any key-down events and set
  * register 2 appropriately for the virtual keyboard. This only happens when
  * the computer is the *active* system, otherwise the keyboard reverts to an
@@ -395,4 +406,35 @@ bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))
 
 	kbd->reg2_callback = reg2_callback;
 	return driver_register(&kbd->drv_idx, &keyboard_driver, *id);
+}
+
+void keyboard_sequence(uint8_t id, uint8_t *c, uint8_t len)
+{
+	if (active >= COMPUTER_COUNT) return;
+	if (id >= keyboard_count) return;
+
+	keyboard_message m;
+	m.length = 0;
+
+	for (uint16_t i = 0; i < len; i++) {
+		bool is_down = key_is_down(c[i], keyboards[id].down);
+		bool ask_down = (c[i] & 0x80) == 0;
+		if (is_down != ask_down) {
+			if (m.length == 0) {
+				m.data[0] = c[i];
+				m.length = 1;
+			} else if (m.length == 1) {
+				m.data[1] = c[i];
+				m.length = 2;
+				keyboard_enqueue(id, &m);
+				m.length = 0;
+			}
+		}
+	}
+
+	// send residual
+	if (m.length == 1) {
+		m.data[1] = 0xFF;
+		keyboard_enqueue(id, &m);
+	}
 }

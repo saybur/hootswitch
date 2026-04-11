@@ -27,6 +27,7 @@
 #include "virtual.h"
 
 #include "bt.h"
+#include "btjoystick.h"
 #include "btscan.h"
 
 // sanity check
@@ -105,15 +106,37 @@ static void my_platform_on_controller_data(uni_hid_device_t* d,
 //	dbg("bt (%p) id=%d ", d, uni_hid_device_get_idx_for_instance(d));
 //	uni_controller_dump(ctl);
 
-	uint32_t s = uxTaskGetStackHighWaterMark(NULL);
+/*	uint32_t s = uxTaskGetStackHighWaterMark(NULL);
 	if (s != stack_high_water) {
 		dbg("bt: %s %d", pcTaskGetName(NULL), s);
 		stack_high_water = s;
 	}
+*/
 
 	switch (ctl->klass) {
 		case UNI_CONTROLLER_CLASS_GAMEPAD:
-			uni_gamepad_dump(&ctl->gamepad);
+			// see include/controller/uni_gamepad.h (uni_gamepad_t)
+			// uni_gamepad_dump(&ctl->gamepad);
+
+/*			dbg("bt-gp: d:%02x x:%d y:%d rx:%d ry:%d br:%d th:%d b:%04x m:%02x",
+					ctl->gamepad.dpad,
+					ctl->gamepad.axis_x,
+					ctl->gamepad.axis_y,
+					ctl->gamepad.axis_rx,
+					ctl->gamepad.axis_ry,
+					ctl->gamepad.brake,
+					ctl->gamepad.throttle,
+					ctl->gamepad.buttons,
+					ctl->gamepad.misc_buttons);
+*/
+			/*
+			 * If data is already waiting for the joystick don't bother
+			 * submitting anything new to save a copy step; otherwise copy
+			 * the data and try to return quickly.
+			 */
+			if (bt_joystick_waiting()) return;
+			bt_joystick_set(&(ctl->gamepad));
+
 			break;
 
 		case UNI_CONTROLLER_CLASS_BALANCE_BOARD:
@@ -226,4 +249,7 @@ void bt_init(void)
 
 	// setup the separate system that calls back to start/stop scanning
 	bt_scan_init();
+
+	// setup the joystick
+	bt_joystick_init();
 }

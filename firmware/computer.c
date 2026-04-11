@@ -784,6 +784,16 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 	}
 }
 
+bool computer_data_waiting(uint8_t comp, uint8_t drv_idx, uint8_t reg)
+{
+	if (comp >= COMPUTER_COUNT) return false;
+	if (drv_idx >= computers[comp].device_count) return false;
+	if (reg > 2) return false;
+
+	comp_device *dev = &computers[comp].devices[drv_idx];
+	return dev->talk[reg].length > 0;
+}
+
 void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue)
 {
 	if (comp >= COMPUTER_COUNT) return;

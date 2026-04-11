@@ -11,6 +11,8 @@
 
 #include <stdbool.h>
 
+#include "joystick.h"
+
 typedef struct {
 	int16_t x, y;
 	uint8_t buttons;
@@ -18,6 +20,8 @@ typedef struct {
 
 bool virtual_keyboard_offer(bool up, uint8_t c);
 bool virtual_mouse_offer(virtual_mouse_data *data);
+
+uint8_t virtual_keyboard_index(void);
 
 void virtual_init(void);
 

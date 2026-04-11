@@ -36,4 +36,15 @@ bool keyboard_enqueue(uint8_t id, keyboard_message *m);
  */
 bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t));
 
+/**
+ * Send a sequence of key up or down events. These are sent to the computer
+ * only if the internal tracker shows the keys are not already up and/or down.
+ *
+ * @param id   the ID to use from the original registration call.
+ * @param *c   an array of keycodes to send; low 7 bits are the character, high
+ *             bit is set if key is going up.
+ * @param len  length of the given array.
+ */
+void keyboard_sequence(uint8_t id, uint8_t *c, uint8_t len);
+
 #endif /* __KEYBOARD_H__ */

@@ -138,10 +138,10 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 					| ((uint32_t) (data[0] << 16))
 					| ((uint32_t) (data[1] << 8))
 					| ((uint32_t) data[2]);
-			jdata.x1 = ((int16_t) data[3]) - 0x80;
-			jdata.y1 = ((int16_t) data[4]) - 0x80;
-			jdata.y2 = ((int16_t) data[5]) - 0x80;
-			jdata.x2 = ((int16_t) data[6]) - 0x80;
+			jdata.x = ((int16_t) data[3]) - 0x80;
+			jdata.y = ((int16_t) data[4]) - 0x80;
+			jdata.throttle = data[5];
+			jdata.brake = data[6];
 			break;
 
 		case MODE_MOUSESTICK:
@@ -150,8 +150,8 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 				dbg_err("gjoy: r0 len != 3, %d", data_len);
 				return;
 			}
-			jdata.x1 = ((int16_t) data[0]) - 0x80;
-			jdata.y1 = ((int16_t) data[1]) - 0x80;
+			jdata.x = ((int16_t) data[0]) - 0x80;
+			jdata.y = ((int16_t) data[1]) - 0x80;
 			jdata.buttons = 0xFFFFFF00L
 					| ((uint32_t) data[3]);
 			break;
