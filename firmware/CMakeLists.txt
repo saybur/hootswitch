@@ -16,6 +16,9 @@ add_executable(hootswitch)
 # generates .su files for stack analysis if needed
 # target_compile_options(hootswitch PRIVATE -fstack-usage)
 
+# use higher clock speed supported officially since SDK 2.1.1+
+target_compile_definitions(hootswitch PRIVATE SYS_CLK_MHZ=200)
+
 if (${PICO_BOARD} STREQUAL pico_w)
 	message("setting build for pico_w")
 	set(HOOTSWITCH_WIRELESS 1)
