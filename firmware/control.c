@@ -48,17 +48,9 @@ static void control_enqueue(unsigned char c)
 		case CONTROL_REBOOT_DEBUG:
 			control_reboot(true);
 			break;
-		case CONTROL_START_CONFIG_WRITE:
-			mode = CONTROL_MODE_CONFIG_WRITE;
 		}
 	} else if (mode == CONTROL_MODE_FLYBYWIRE) {
 		serial_enqueue(c);
-	} else if (mode == CONTROL_MODE_CONFIG_WRITE) {
-		bool resp = false;
-		config_write_serial_byte(c, &resp);
-		if (resp) {
-			mode == CONTROL_MODE_IDLE;
-		}
 	}
 }
 

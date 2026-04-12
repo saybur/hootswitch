@@ -11,7 +11,6 @@
 
 #define CONTROL_REBOOT                0xF1
 #define CONTROL_REBOOT_DEBUG          0xF2
-#define CONTROL_START_CONFIG_WRITE    0xF3
 
 typedef enum {
 	RESET_TYPE_NORMAL = 0,
@@ -20,8 +19,7 @@ typedef enum {
 
 typedef enum {
 	CONTROL_MODE_IDLE = 0,
-	CONTROL_MODE_FLYBYWIRE,
-	CONTROL_MODE_CONFIG_WRITE
+	CONTROL_MODE_FLYBYWIRE
 } control_mode_type;
 
 /**

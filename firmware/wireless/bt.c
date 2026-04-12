@@ -35,6 +35,7 @@
 #error "Pico W must use BLUEPAD32_PLATFORM_CUSTOM"
 #endif
 
+static volatile bool *is_started;
 static uint32_t stack_high_water;
 static bool initial_scan = true;
 
@@ -46,6 +47,7 @@ static void my_platform_init(int argc, const char** argv)
 	ARG_UNUSED(argv);
 
 	dbg("bt init()");
+	*is_started = true;
 }
 
 static void my_platform_on_init_complete(void)
@@ -221,8 +223,10 @@ static void bt_do_work(
 }
 static async_when_pending_worker_t bt_worker = { .do_work = bt_do_work };
 
-void bt_init(void)
+void bt_init(volatile bool *started)
 {
+	is_started = started;
+
 	if (cyw43_arch_init()) {
 		panic("unable to init cyw43, is this a Pico W?");
 	}

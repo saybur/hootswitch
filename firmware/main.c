@@ -94,8 +94,16 @@ static void init_task(__unused void *parameters)
 	}
 
 	dbg(PROGRAM_NAME);
-	init_config();
 	led_activity(true);
+
+#ifdef HOOTSWITCH_WIRELESS
+	// need btstack loaded to get TLV config
+	volatile bool started = false;
+	bt_init(&started);
+	while (!started) tight_loop_contents();
+#endif
+
+	init_config();
 	handler_init();
 
 	host_err herr;
@@ -123,10 +131,6 @@ static void init_task(__unused void *parameters)
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(control_task, "control", configMINIMAL_STACK_SIZE,
 			NULL, tskIDLE_PRIORITY, NULL);
-
-#ifdef HOOTSWITCH_WIRELESS
-	bt_init();
-#endif
 
 	// may be vulnerable to drivers not being hooked but we'll try anyway
 	computer_switch(1, true);

@@ -45,17 +45,17 @@ pico_generate_pio_header(hootswitch ${CMAKE_CURRENT_LIST_DIR}/bus.pio)
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/usb)
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/drivers)
-target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/wireless)
 target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib)
 
 add_subdirectory(drivers)
-add_subdirectory(wireless)
 add_subdirectory(usb)
 
 if (DEFINED HOOTSWITCH_WIRELESS)
+	target_include_directories(hootswitch PRIVATE ${CMAKE_CURRENT_LIST_DIR}/wireless)
+	include_directories(${CMAKE_CURRENT_LIST_DIR}/wireless)
 	target_include_directories(hootswitch PRIVATE
 			$ENV{BLUEPAD32_ROOT}/src/components/bluepad32/include)
-	include_directories(${CMAKE_CURRENT_LIST_DIR}/wireless)
+	add_subdirectory(wireless)
 endif()
 
 target_sources(hootswitch PRIVATE

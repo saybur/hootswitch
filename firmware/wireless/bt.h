@@ -9,6 +9,6 @@
 #ifndef __BT_H__
 #define __BT_H__
 
-void bt_init(void);
+void bt_init(volatile bool *started);
 
 #endif /* __BT_H__ */
