@@ -9,8 +9,8 @@
 #ifndef __DEBUG_H__
 #define __DEBUG_H__
 
-void dbg(const char *s, ...);
-void dbg_err(const char *s, ...);
-void dbg_trace(const char *s, ...);
+void dbg(const char *format, ...);
+void dbg_err(const char *format, ...);
+void dbg_trace(const char *format, ...);
 
 #endif /* __DEBUG_H__ */

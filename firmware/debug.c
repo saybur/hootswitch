@@ -15,30 +15,40 @@
 
 void dbg(const char *format, ...)
 {
-	printf("[%10d] dbg: ", time_us_32());
+	uint32_t time = time_us_64() >> 11; // approx us->ms
+	char buf[64];
 
 	// thanks to https://stackoverflow.com/a/20639708 for this technique!
 	va_list args;
 	va_start(args, format);
-	vprintf(format, args);
+	vsnprintf(buf, sizeof buf, format, args);
 	va_end(args);
 
-	puts(""); // newline
+	stdio_printf("[%8d] %s\n", time, buf);
 }
 
 void dbg_err(const char *format, ...)
 {
-	printf("[%10d] err: ", time_us_32());
+	uint32_t time = time_us_64() >> 11; // approx us->ms
+	char buf[64];
 
 	va_list args;
 	va_start(args, format);
-	vprintf(format, args);
+	vsnprintf(buf, sizeof buf, format, args);
 	va_end(args);
 
-	puts(""); // newline
+	stdio_printf("[%8d] ERR: %s\n", time, buf);
 }
 
-void dbg_trace(const char *s, ...)
+void dbg_trace(const char *format, ...)
 {
-	// TODO suppress for now
+	uint32_t time = time_us_64() >> 11; // approx us->ms
+	char buf[64];
+
+	va_list args;
+	va_start(args, format);
+	vsnprintf(buf, sizeof buf, format, args);
+	va_end(args);
+
+	stdio_printf("[%8d] t: %s\n", time, buf);
 }
