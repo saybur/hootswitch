@@ -67,23 +67,23 @@ static void bt_joystick_task(void *parameters)
 			// https://github.com/lampmerchant/tashnotes
 			// under macintosh/adb/protocols/gravis_firebird.md
 			uint32_t b = 0;
-			if ((report.dpad) & 0x4)    b |= 0x1;
-			if ((report.buttons) & 0x1) b |= 0x2;
-			if ((report.buttons) & 0x2) b |= 0x4;
-			if ((report.dpad) & 0x1)    b |= 0x8;
-			if ((report.dpad) & 0x2)    b |= 0x10;
-			if ((report.buttons) & 0x4) b |= 0x20;
-			if ((report.buttons) & 0x8) b |= 0x40;
-			if ((report.dpad) & 0x8)    b |= 0x80;
-			if ((report.buttons) & 0x10) b |= 0x100;
-			if ((report.buttons) & 0x20) b |= 0x200;
-			if ((report.buttons) & 0x40) b |= 0x400;
-			if ((report.buttons) & 0x100) b |= 0x800;
-			if ((report.buttons) & 0x200) b |= 0x1000;
-			if ((report.misc_buttons) & 0x1) b |= 0x2000;
-			if ((report.misc_buttons) & 0x2) b |= 0x4000;
-			if ((report.misc_buttons) & 0x4) b |= 0x8000;
-			if ((report.misc_buttons) & 0x8) b |= 0x10000L;
+			if (report.dpad & 0x4)    b |= 0x1;
+			if (report.buttons & 0x1) b |= 0x2;
+			if (report.buttons & 0x2) b |= 0x4;
+			if (report.dpad & 0x1)    b |= 0x8;
+			if (report.dpad & 0x2)    b |= 0x10;
+			if (report.buttons & 0x4) b |= 0x20;
+			if (report.buttons & 0x8) b |= 0x40;
+			if (report.dpad & 0x8)    b |= 0x80;
+			if (report.buttons & 0x10) b |= 0x100;
+			if (report.buttons & 0x20) b |= 0x200;
+			if (report.buttons & 0x40) b |= 0x400;
+			if (report.buttons & 0x100) b |= 0x800;
+			if (report.buttons & 0x200) b |= 0x1000;
+			if (report.misc_buttons & 0x1) b |= 0x2000;
+			if (report.misc_buttons & 0x2) b |= 0x4000;
+			if (report.misc_buttons & 0x4) b |= 0x8000;
+			if (report.misc_buttons & 0x8) b |= 0x10000L;
 			j.buttons = ~b;
 
 			joystick_update(joy_idx, &j);
@@ -99,9 +99,9 @@ static void bt_joystick_task(void *parameters)
 			 */
 			uint8_t keys[8] = { 0x3E, 0x3D, 0x3C, 0x3B, 0x00, 0x01, 0x02, 0x03 };
 			for (uint8_t i = 0; i < 4; i++) {
-				uint8_t mask = 1 << i;
-				if (! ((report.dpad) & mask)) keys[i] |= 0x80;
-				if (! ((report.buttons) & mask)) keys[i+4] |= 0x80;
+				uint8_t mask = 1U << i;
+				if ((report.dpad & mask) == 0) keys[i] |= 0x80;
+				if ((report.buttons & mask) == 0) keys[i+4] |= 0x80;
 			}
 			keyboard_sequence(virtual_keyboard_index(), keys, sizeof(keys));
 		}

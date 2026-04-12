@@ -341,7 +341,7 @@ bool keyboard_enqueue(uint8_t id, keyboard_message *m)
 	uint8_t hi = m->data[1];
 	uint8_t lo = m->data[0];
 
-	dbg("kbd: lo:0x%02X, hi:0x%02X", lo, hi);
+	dbg_trace("kbd: lo:0x%02X, hi:0x%02X", lo, hi);
 
 	// handle power switch activation
 	if (lo == 0x7F && hi == 0x7F) {
@@ -414,27 +414,27 @@ void keyboard_sequence(uint8_t id, uint8_t *c, uint8_t len)
 	if (id >= keyboard_count) return;
 
 	keyboard_message m;
-	m.length = 0;
+	m.data[0] = 0xFF;
+	m.data[1] = 0xFF;
+	m.length = 2;
 
 	for (uint16_t i = 0; i < len; i++) {
 		bool is_down = key_is_down(c[i], keyboards[id].down);
 		bool ask_down = (c[i] & 0x80) == 0;
 		if (is_down != ask_down) {
-			if (m.length == 0) {
+			if (m.data[0] == 0xFF) {
 				m.data[0] = c[i];
-				m.length = 1;
-			} else if (m.length == 1) {
+			} else if (m.data[1] == 0xFF) {
 				m.data[1] = c[i];
-				m.length = 2;
 				keyboard_enqueue(id, &m);
-				m.length = 0;
+				m.data[0] = 0xFF;
+				m.data[1] = 0xFF;
 			}
 		}
 	}
 
 	// send residual
-	if (m.length == 1) {
-		m.data[1] = 0xFF;
+	if (m.data[0] != 0xFF) {
 		keyboard_enqueue(id, &m);
 	}
 }
