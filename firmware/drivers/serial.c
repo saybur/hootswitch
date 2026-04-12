@@ -38,7 +38,7 @@
  */
 
 static uint8_t command;
-static uint8_t mse_cache[2];
+static uint8_t mse_cache[2] = { 0x80, 0x80 };
 
 /*
  * ----------------------------------------------------------------------------
