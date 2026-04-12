@@ -144,7 +144,7 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 	if (active >= COMPUTER_COUNT) return;
 	if (id >= device_count) return;
 
-	dbg("gjoy %d: x:%d y:%d bk:%d th:%d btn:%d",
+	dbg_trace("gjoy %d: x:%d y:%d bk:%d th:%d btn:%d",
 			id, jdata->x, jdata->y, jdata->brake, jdata->throttle, jdata->buttons);
 
 	// remap data from the real device to the virtual handler

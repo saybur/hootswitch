@@ -37,3 +37,8 @@ void dbg_err(const char *format, ...)
 
 	puts(""); // newline
 }
+
+void dbg_trace(const char *s, ...)
+{
+	// TODO suppress for now
+}

@@ -11,5 +11,6 @@
 
 void dbg(const char *s, ...);
 void dbg_err(const char *s, ...);
+void dbg_trace(const char *s, ...);
 
 #endif /* __DEBUG_H__ */

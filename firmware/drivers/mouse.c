@@ -202,7 +202,7 @@ bool mouse_update(uint8_t id, int16_t x, int16_t y, uint8_t btn)
 
 	mouse *mse = &mice[id];
 	uint8_t downscale = mouse_downscale(mse);
-	dbg("mse: x:%d, y:%d, btn:0x%02X", x, y, btn);
+	dbg_trace("mse: x:%d, y:%d, btn:0x%02X", x, y, btn);
 
 	if (xSemaphoreTake(mse->sem, portMAX_DELAY)) {
 		// with data locked, update with new values
