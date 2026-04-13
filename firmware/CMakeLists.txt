@@ -59,7 +59,7 @@ if (DEFINED HOOTSWITCH_WIRELESS)
 endif()
 
 target_sources(hootswitch PRIVATE
-		button.c buzzer.c computer.c config.c control.c debug.c driver.c handler.c host.c host_sync.c led.c main.c util.c
+		button.c buzzer.c computer.c config.c control.c debug.c driver.c handler.c host.c host_sync.c keymap.c led.c main.c util.c
 		)
 
 target_link_libraries(hootswitch

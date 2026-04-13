@@ -28,6 +28,7 @@
 
 #include "bt.h"
 #include "btjoystick.h"
+#include "btkeyboard.h"
 #include "btscan.h"
 
 // sanity check
@@ -156,7 +157,16 @@ static void my_platform_on_controller_data(uni_hid_device_t* d,
 			break;
 
 		case UNI_CONTROLLER_CLASS_KEYBOARD:
-			uni_keyboard_dump(&ctl->keyboard);
+//			uni_keyboard_dump(&ctl->keyboard);
+
+			bt_keyboard_update(&ctl->keyboard);
+
+//			uint8_t *p = ctl->keyboard.pressed_keys;
+//			dbg("btk: m:%02x, %02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x",
+//					ctl->keyboard.modifiers,
+//					p[0], p[1], p[2], p[3], p[4],
+//					p[5], p[6], p[7], p[8], p[9]);
+
 			break;
 
 		default:
