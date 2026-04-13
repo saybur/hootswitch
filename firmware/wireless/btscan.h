@@ -9,7 +9,7 @@
 #ifndef __BTSCAN_H__
 #define __BTSCAN_H__
 
-#define BTSCAN_DURATION_SECONDS 30
+#define BTSCAN_DURATION_SECONDS 60
 
 /**
  * Starts the Bluetooth scanning process. This internally times out after
