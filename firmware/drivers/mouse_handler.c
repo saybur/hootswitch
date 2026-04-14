@@ -125,7 +125,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 		// then send it
 		mouse_update(mice[i].idx, xt, yt, buttons);
 
-		dbg("mse_h: %d %d", data[0], data[1]);
+		dbg_trace("mse_h: %d %d", data[0], data[1]);
 	}
 }
 

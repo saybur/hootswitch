@@ -234,22 +234,22 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg, bool pri)
 
 		if (pri) {
 			if (len == 3) {
-				dbg("kens-pri (tlk): %d %d %d", data[0], data[1], data[2]);
+				dbg_trace("kens-pri (tlk): %d %d %d", data[0], data[1], data[2]);
 			} else if (len == 2) {
-				dbg("kens-pri (tlk): %d %d", data[0], data[1]);
+				dbg_trace("kens-pri (tlk): %d %d", data[0], data[1]);
 			}
 		} else {
 			if (len == 3) {
-				dbg("kens-sec (tlk): %d %d %d", data[0], data[1], data[2]);
+				dbg_trace("kens-sec (tlk): %d %d %d", data[0], data[1], data[2]);
 			} else if (len == 2) {
-				dbg("kens-sec (tlk): %d %d", data[0], data[1]);
+				dbg_trace("kens-sec (tlk): %d %d", data[0], data[1]);
 			}
 		}
 	} else {
 		if (pri) {
-			dbg("kens-pri (tlk) skip");
+			dbg_trace("kens-pri (tlk) skip");
 		} else {
-			dbg("kens-sec (tlk) skip");
+			dbg_trace("kens-sec (tlk) skip");
 		}
 	}
 }
@@ -300,7 +300,7 @@ static void drvr_pri_listen(uint8_t comp, uint32_t ref, uint8_t reg,
 			reg2, REGISTER_2_LEN, true);
 
 	// report messaging
-	dbg("kens L2 %02X%02X%02X%02X%02X%02X%02X",
+	dbg_trace("kens L2 %02X%02X%02X%02X%02X%02X%02X",
 			reg2[0], reg2[1], reg2[2], reg2[3], reg2[4], reg2[5], reg2[6]);
 }
 
@@ -470,22 +470,22 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 			if (drv_idx == mice[i].drv_idx_pri) {
 				if (data_out_len == 3) {
-					dbg("kens-pri: %d %d %d", data[0], data[1], data[2]);
+					dbg_trace("kens-pri: %d %d %d", data[0], data[1], data[2]);
 				} else if (data_out_len == 2) {
-					dbg("kens-pri: %d %d", data[0], data[1]);
+					dbg_trace("kens-pri: %d %d", data[0], data[1]);
 				}
 			} else {
 				if (data_out_len == 3) {
-					dbg("kens-sec: %d %d %d", data[0], data[1], data[2]);
+					dbg_trace("kens-sec: %d %d %d", data[0], data[1], data[2]);
 				} else if (data_out_len == 2) {
-					dbg("kens-sec: %d %d", data[0], data[1]);
+					dbg_trace("kens-sec: %d %d", data[0], data[1]);
 				}
 			}
 		} else {
 			if (drv_idx == mice[i].drv_idx_pri) {
-				dbg("kens-pri: skip");
+				dbg_trace("kens-pri: skip");
 			} else {
-				dbg("kens-sec: skip");
+				dbg_trace("kens-sec: skip");
 			}
 		}
 	}

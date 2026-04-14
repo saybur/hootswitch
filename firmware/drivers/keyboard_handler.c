@@ -87,7 +87,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 	if (i == keyboard_count) return;
 
 	if (data_len >= 2) {
-		dbg("kbd_h: %d %d", data[0], data[1]);
+		dbg_trace("kbd_h: %d %d", data[0], data[1]);
 
 		// enqueue data, dropping if queue is full
 		keyboard_message kb;
