@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(PICO_BOARD pico_w)
-set(PICO_PLATFORM rp2040)
+if (NOT DEFINED PICO_BOARD)
+	set(PICO_BOARD pico_w)
+endif()
+
 set(PICO_COMPILER pico_arm_cortex_m0plus_gcc)
 
 # if user has installed pico-sdk separately use that instead

@@ -40,6 +40,8 @@ suitable after being adjusted for your environment.
 ## Build the Firmware
 
 Once you have everything set up, build as follows from the root of the repo.
+This builds for the Pico W by default. To build for the standard (non-W) Pico,
+pass `-DPICO_BOARD=pico` during the call to `cmake` below.
 
 ```
 mkdir -p build
@@ -50,3 +52,12 @@ make -j4
 
 Among other files, this will produce `hootswitch.uf2`. Flash it to the device
 following the instructions in <README.md>.
+
+## Hardware
+
+Both the original Raspberry Pi Pico and Pico W boards are supported. The focus
+of development is on the Pico W: in addition to support for Bluetooth, the
+current configuration system also requires the _btstack_ library, which is
+licensed for use on the Pico W only.
+
+The Pico 2 and Pico 2 W have _not_ been tested and may not work correctly.
