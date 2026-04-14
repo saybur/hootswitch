@@ -13,6 +13,8 @@
 
 #include "debug.h"
 
+static volatile bool trace_on;
+
 void dbg(const char *format, ...)
 {
 	uint32_t time = time_us_64() >> 11; // approx us->ms
@@ -42,6 +44,8 @@ void dbg_err(const char *format, ...)
 
 void dbg_trace(const char *format, ...)
 {
+	if (!trace_on) return;
+
 	uint32_t time = time_us_64() >> 11; // approx us->ms
 	char buf[64];
 
@@ -51,4 +55,9 @@ void dbg_trace(const char *format, ...)
 	va_end(args);
 
 	stdio_printf("[%8d] t: %s\n", time, buf);
+}
+
+void dbg_trace_enable(void)
+{
+	trace_on = true;
 }

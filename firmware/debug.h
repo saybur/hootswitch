@@ -12,5 +12,6 @@
 void dbg(const char *format, ...);
 void dbg_err(const char *format, ...);
 void dbg_trace(const char *format, ...);
+void dbg_trace_enable(void);
 
 #endif /* __DEBUG_H__ */
