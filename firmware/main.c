@@ -61,7 +61,8 @@ static void init_hardware(void)
 
 static void init_config(void)
 {
-	config_setup();
+	// already performed within BT code, skip
+	// config_setup();
 
 	// read core configuration information, and on failure leave at defaults
 	uint8_t core;

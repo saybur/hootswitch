@@ -22,6 +22,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "config.h"
 #include "debug.h"
 
 #include "virtual.h"
@@ -240,6 +241,10 @@ void bt_init(volatile bool *started)
 	if (cyw43_arch_init()) {
 		panic("unable to init cyw43, is this a Pico W?");
 	}
+
+	// immediately setup configuration
+	// will wrap btstack_tlv_t before anyone can grab a (bad) reference
+	config_setup();
 
 	/*
 	 * This required a fair bit of trial-and-error, the mix of btstack,
