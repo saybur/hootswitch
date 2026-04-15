@@ -8,17 +8,32 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <pico/stdlib.h>
 
-#include "pico/stdlib.h"
+#include <FreeRTOS.h>
+#include <queue.h>
 
 #include "debug.h"
 
 static volatile bool trace_on;
+static volatile QueueHandle_t messages;
+
+static void dbg_printf(const char *format, ...)
+{
+	char buf[DEBUG_MESSAGE_LENGTH_MAX];
+
+	va_list args;
+	va_start(args, format);
+	vsnprintf(buf, sizeof buf, format, args);
+	va_end(args);
+
+	xQueueSend(messages, buf, 0);
+}
 
 void dbg(const char *format, ...)
 {
 	uint32_t time = time_us_64() >> 11; // approx us->ms
-	char buf[64];
+	char buf[DEBUG_MESSAGE_LENGTH_MAX - 12];
 
 	// thanks to https://stackoverflow.com/a/20639708 for this technique!
 	va_list args;
@@ -26,20 +41,20 @@ void dbg(const char *format, ...)
 	vsnprintf(buf, sizeof buf, format, args);
 	va_end(args);
 
-	stdio_printf("[%8d] %s\n", time, buf);
+	dbg_printf("[%8d] %s", time, buf);
 }
 
 void dbg_err(const char *format, ...)
 {
 	uint32_t time = time_us_64() >> 11; // approx us->ms
-	char buf[64];
+	char buf[DEBUG_MESSAGE_LENGTH_MAX - 17];
 
 	va_list args;
 	va_start(args, format);
 	vsnprintf(buf, sizeof buf, format, args);
 	va_end(args);
 
-	stdio_printf("[%8d] ERR: %s\n", time, buf);
+	dbg_printf("[%8d] ERR: %s", time, buf);
 }
 
 void dbg_trace(const char *format, ...)
@@ -47,17 +62,36 @@ void dbg_trace(const char *format, ...)
 	if (!trace_on) return;
 
 	uint32_t time = time_us_64() >> 11; // approx us->ms
-	char buf[64];
+	char buf[DEBUG_MESSAGE_LENGTH_MAX - 15];
 
 	va_list args;
 	va_start(args, format);
 	vsnprintf(buf, sizeof buf, format, args);
 	va_end(args);
 
-	stdio_printf("[%8d] t: %s\n", time, buf);
+	dbg_printf("[%8d] t: %s", time, buf);
 }
 
 void dbg_trace_enable(void)
 {
 	trace_on = true;
+}
+
+void dbg_init(void)
+{
+	if (!messages) {
+		messages = xQueueCreate(
+				DEBUG_MESSAGE_QUEUE_DEPTH,
+				DEBUG_MESSAGE_LENGTH_MAX);
+	}
+}
+
+void dbg_task(__unused void *parameters)
+{
+	char buf[64];
+	while (1) {
+		if (pdPASS == xQueueReceive(messages, &buf, portMAX_DELAY)) {
+			stdio_puts(buf);
+		}
+	}
 }

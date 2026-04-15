@@ -146,10 +146,13 @@ int main(void)
 	stdio_init_all();
 
 	init_hardware();
+	dbg_init();
 
 	xTaskCreate(init_task, "init", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(usb_dev_task, "usb_dev", DEFAULT_STACK * 3,
+			NULL, configMAX_PRIORITIES - 1, NULL);
+	xTaskCreate(dbg_task, "debug", DEFAULT_STACK,
 			NULL, configMAX_PRIORITIES - 1, NULL);
 
 	vTaskStartScheduler();
