@@ -29,7 +29,7 @@ void buzzer_enable(bool enabled);
  *
  * @param freq         approximate playback frequency.
  * @param duration_ms  approximate time to play, in milliseconds.
- * @param vol          duty cycle from 0 (0%) to 255 (50%).
+ * @param vol          rough volume step from 0 (0%) to 7 (50%).
  */
 void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol);
 

@@ -19,13 +19,13 @@
 #include "buzzer.h"
 #include "hardware.h"
 
-#define FREQ_MIN        400
+#define FREQ_MIN        300
 #define FREQ_MAX        8000
-#define PWM_LENGTH      512
+#define PWM_DIV         64
 
-#define CHIRP_FREQ      3200
+#define CHIRP_FREQ      600
 #define CHIRP_DURATION  100
-#define CHIRP_VOLUME    64
+#define CHIRP_VOLUME    3
 
 static volatile bool buzzer_enabled = true;
 static uint8_t slice;
@@ -52,20 +52,21 @@ void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol)
 	if (duration_ms == 0) return;
 	if (freq < 50) freq = FREQ_MIN;
 	if (freq > FREQ_MAX) freq = FREQ_MAX;
+	if (vol > 7) vol = 7;
 
-	float div = clock_get_hz(clk_sys) / (float) (freq * PWM_LENGTH);
+	const uint32_t n = clock_get_hz(clk_sys) / (PWM_DIV << 1);
+	uint16_t top = n / freq - 1;
+
 #ifndef BUZZER_DISABLE
 	// even if disabled go through most of the motions to keep timing similar
 	if (buzzer_enabled) {
-		pwm_set_clkdiv(slice, div);
-		pwm_set_chan_level(slice, chan, vol);
+		pwm_set_wrap(slice, top);
+		pwm_set_chan_level(slice, chan, top >> (8 - vol));
 	}
 #endif
 
-	uint32_t isr = save_and_disable_interrupts();
-	uint32_t future = time_us_32() + duration_ms * 1000;
-	timer_hw->alarm[BUZZER_TIMER] = future;
-	restore_interrupts(isr);
+	timer_hardware_alarm_set_target(timer_hw, BUZZER_TIMER,
+			time_us_64() + duration_ms * 1000);
 }
 
 void buzzer_init(void)
@@ -75,8 +76,9 @@ void buzzer_init(void)
 	chan = pwm_gpio_to_channel(BUZZER_PIN);
 
 	pwm_set_chan_level(slice, chan, 0);
-	pwm_set_clkdiv_int_frac(slice, 125, 0);
-	pwm_set_wrap(slice, PWM_LENGTH - 1);
+	pwm_set_phase_correct(slice, true);
+	pwm_set_clkdiv_int_frac(slice, PWM_DIV, 0);
+	pwm_set_wrap(slice, 1);
 	pwm_set_enabled(slice, true);
 
 	hardware_alarm_claim(BUZZER_TIMER);
