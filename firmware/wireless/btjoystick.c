@@ -58,8 +58,21 @@ static void bt_joystick_task(void *parameters)
 
 		if (joystick_enabled(joy_idx)) {
 			joystick_data j;
-			j.x = (((uint16_t)(report.axis_x)) >> 1) & 0xFF;
-			j.y	= (((uint16_t)(report.axis_y)) >> 1) & 0xFF;
+
+			/*
+			 * Docs for uni_gamepad_t say joystick axis is on [-512, 511] but
+			 * 512 is sometimes returned; compensate with special case.
+			 */
+			if (report.axis_x > 511) {
+				j.x = 127;
+			} else {
+				j.x = (((uint16_t)(report.axis_x)) >> 2) & 0xFF;
+			}
+			if (report.axis_y > 511) {
+				j.y = 127;
+			} else {
+				j.y	= (((uint16_t)(report.axis_y)) >> 2) & 0xFF;
+			}
 			j.throttle = (((uint16_t)(report.throttle)) >> 2) & 0xFF;
 			j.brake = (((uint16_t)(report.brake)) >> 2) & 0xFF;
 
