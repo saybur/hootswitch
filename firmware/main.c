@@ -90,7 +90,6 @@ static void init_task(__unused void *parameters)
 				led_activity(led);
 				led = !led;
 			}
-			dbg_trace_enable();
 			led_activity(false);
 			break;
 	}

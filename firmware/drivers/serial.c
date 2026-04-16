@@ -78,6 +78,8 @@ void serial_enqueue(uint8_t c) {
 			bt_scan();
 #endif
 			break;
+		case SER_CMD_TRACE:
+			dbg_trace_enable(!dbg_trace_is_enabled());
 		}
 	} else {
 		switch (command) {

@@ -250,6 +250,13 @@ function bluetoothScan()
 	writer.write(a);
 }
 
+function traceLogging()
+{
+	if (! port) return;
+	const a = new Uint8Array([0x89]);
+	writer.write(a);
+}
+
 /*
  * ----------------------------------------------------------------------------
  *   "About" Text

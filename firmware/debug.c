@@ -72,9 +72,14 @@ void dbg_trace(const char *format, ...)
 	dbg_printf("[%8d] t: %s", time, buf);
 }
 
-void dbg_trace_enable(void)
+void dbg_trace_enable(bool state)
 {
-	trace_on = true;
+	trace_on = state;
+}
+
+bool dbg_trace_is_enabled(void)
+{
+	return trace_on;
 }
 
 void dbg_init(void)
