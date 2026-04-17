@@ -7,11 +7,13 @@
  */
 
 #include <stdio.h>
-#include "pico/stdlib.h"
-#include "hardware/watchdog.h"
+#include <hardware/watchdog.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <tusb.h>
+
+#include <FreeRTOS.h>
+#include <stream_buffer.h>
+#include <task.h>
 
 #include "computer.h"
 #include "config.h"
@@ -27,6 +29,7 @@
 #define WATCHDOG_SCRATCH_REG   0
 
 #define CONTROL_WDRST_DEBUG    0xA5A5A5A5
+#define CONTROL_BUFFER_SIZE    64
 
 static volatile control_mode_type mode = CONTROL_MODE_IDLE;
 
@@ -99,11 +102,42 @@ void control_start(void)
 	mode = CONTROL_MODE_FLYBYWIRE;
 }
 
+/*
+ * ----------------------------------------------------------------------------
+ *   Data Handoff Logic
+ * ----------------------------------------------------------------------------
+ *
+ * This uses a FreeRTOS stream buffer to pass from producer (TinyUSB) to
+ * consumer (control task).
+ */
+
+static volatile StreamBufferHandle_t stream = NULL;
+
+void tud_cdc_rx_cb(uint8_t itf)
+{
+	if (!stream) return;
+
+	uint8_t data[CONTROL_BUFFER_SIZE];
+	uint32_t data_read = tud_cdc_read(data, sizeof(data));
+	if (data_read > 0) {
+		uint32_t data_write = xStreamBufferSend(stream, data, data_read, 0);
+		if (data_write != data_read) {
+			dbg("cdc read dropped %d bytes", data_read - data_write);
+		}
+	}
+}
+
 void control_task(__unused void *parameters)
 {
-	unsigned char c;
+	// create stream for 2x max read size above is, triggering on 1 byte
+	stream = xStreamBufferCreate(CONTROL_BUFFER_SIZE * 2, 0);
+
+	unsigned char data[CONTROL_BUFFER_SIZE];
 	while (true) {
-		c = getc(stdin);
-		control_enqueue(c);
+		uint16_t data_read = xStreamBufferReceive(
+				stream, data, CONTROL_BUFFER_SIZE, portMAX_DELAY);
+		for (uint16_t i = 0; i < data_read; i++) {
+			control_enqueue(data[i]);
+		}
 	}
 }
