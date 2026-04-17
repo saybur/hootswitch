@@ -35,7 +35,7 @@
 
 #define DEFAULT_STACK      configMINIMAL_STACK_SIZE
 #define DEFAULT_PRIORITY   (tskIDLE_PRIORITY + 1U)
-#define DISPATCH_PRIORITY  (tskIDLE_PRIORITY + 2U)
+#define DISPATCH_PRIORITY  (tskIDLE_PRIORITY + 8U)
 
 // https://stackoverflow.com/a/2220565
 #pragma GCC push_options
@@ -137,7 +137,7 @@ static void init_task(__unused void *parameters)
 	xTaskCreate(button_task, "button", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
 	xTaskCreate(control_task, "control", configMINIMAL_STACK_SIZE,
-			NULL, tskIDLE_PRIORITY, NULL);
+			NULL, DEFAULT_PRIORITY, NULL);
 
 	// may be vulnerable to drivers not being hooked but we'll try anyway
 	computer_switch(1, true);
@@ -158,7 +158,7 @@ int main(void)
 	xTaskCreate(usb_dev_task, "usb_dev", DEFAULT_STACK * 3,
 			NULL, configMAX_PRIORITIES - 1, NULL);
 	xTaskCreate(dbg_task, "debug", DEFAULT_STACK,
-			NULL, configMAX_PRIORITIES - 1, NULL);
+			NULL, configMAX_PRIORITIES - 2, NULL);
 	xTaskCreate(notify_task, "notify", DEFAULT_STACK,
 			NULL, DEFAULT_PRIORITY, NULL);
 

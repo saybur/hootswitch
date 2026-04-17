@@ -21,6 +21,7 @@
 
 #define SAMPLE_RATE_MS  100
 #define SCAN_MAX_TICK   (BTSCAN_DURATION_SECONDS * 1000L) / SAMPLE_RATE_MS
+#define SCAN_PRIORITY   tskIDLE_PRIORITY + 1U
 
 static TaskHandle_t scan_task;
 
@@ -66,5 +67,5 @@ void bt_scan_init(void)
 	xTaskCreate(bt_scan_task,
 			"btscan",
 			configMINIMAL_STACK_SIZE,
-			NULL, tskIDLE_PRIORITY, &scan_task);
+			NULL, SCAN_PRIORITY, &scan_task);
 }
