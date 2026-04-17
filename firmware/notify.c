@@ -26,7 +26,7 @@
 #define CHIRP_DURATION      100
 #define CHIRP_VOLUME        3
 
-#define CONNECT_DURATION    250
+#define CONNECT_DURATION    200
 #define CONNECT_VOLUME      3
 
 static QueueHandle_t notifications;
