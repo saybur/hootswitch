@@ -36,9 +36,6 @@ static void bt_scan_task(void *parameters)
 	bool led = false;
 	bool scanning = false;
 
-	// suspend task until first called
-	vTaskSuspend(scan_task);
-	
 	while (true) {
 		vTaskDelay(SAMPLE_RATE_MS / portTICK_PERIOD_MS);
 		scanning = uni_bt_is_scanning();

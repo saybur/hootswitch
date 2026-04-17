@@ -60,8 +60,6 @@ static void my_platform_on_init_complete(void)
 	uni_bt_list_keys_unsafe();
 	uni_bt_service_set_enabled(true);
 	uni_property_dump_all();
-
-	bt_scan();
 }
 
 static uni_error_t my_platform_on_device_discovered(bd_addr_t addr,
@@ -269,7 +267,11 @@ void bt_init(volatile bool *started)
 	async_context_add_when_pending_worker(cyw43_arch_async_context(), &bt_worker);
 	async_context_set_work_pending(cyw43_arch_async_context(), &bt_worker);
 
-	// setup the separate system that calls back to start/stop scanning
+	/*
+	 * Setup the separate system that calls back to start/stop scanning. The
+	 * associated task will start scanning when first started, but since main()
+	 * halts until my_platform_init() clears that shouldn't be a problem.
+	 */
 	bt_scan_init();
 
 	// setup the joystick
