@@ -38,6 +38,7 @@
 static uint8_t joy_idx;
 static QueueHandle_t report_queue;
 static uni_gamepad_t report;
+static joystick_data last;
 
 void bt_joystick_set(uni_gamepad_t *new_report)
 {
@@ -99,7 +100,21 @@ static void bt_joystick_task(void *parameters)
 			if (report.misc_buttons & 0x8) b |= 0x10000L;
 			j.buttons = ~b;
 
-			joystick_update(joy_idx, &j);
+			/*
+			 * At this point check if there is a difference from the last
+			 * report; actual Firebird devices seem to only trigger a Talk
+			 * update if the joystick has moved.
+			 */
+			if (last.x == j.x
+					&& last.y == j.y
+					&& last.brake == j.brake
+					&& last.throttle == j.throttle
+					&& last.buttons == j.buttons) {
+				// no change, veto
+			} else {
+				last = j;
+				joystick_update(joy_idx, &j);
+			}
 		} else {
 			/*
 			 * Use the _sequence() call to send a set of keystrokes to the
