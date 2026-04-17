@@ -6,9 +6,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+#ifdef RUNTIME_FREERTOS_REPORTING
+#include <stdlib.h>
+#endif
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <pico/stdlib.h>
+#include <pico/time.h>
 
 #include <FreeRTOS.h>
 #include <queue.h>
@@ -80,6 +85,62 @@ void dbg_trace_enable(bool state)
 bool dbg_trace_is_enabled(void)
 {
 	return trace_on;
+}
+
+uint32_t debug_time_us_32(void)
+{
+	return time_us_32();
+}
+
+void dbg_stats(debug_stats_option option)
+{
+#ifdef RUNTIME_FREERTOS_REPORTING
+	uint8_t task_count = uxTaskGetNumberOfTasks();
+	uint8_t *stats = NULL;
+
+	switch (option) {
+		case DEBUG_RUNTIME_HEAP:
+			HeapStats_t heap;
+			vPortGetHeapStats(&heap);
+			dbg("heap: xAvailableHeapSpaceInBytes %d",
+					heap.xAvailableHeapSpaceInBytes);
+			dbg("heap: xSizeOfLargestFreeBlockInBytes %d",
+					heap.xSizeOfLargestFreeBlockInBytes);
+			dbg("heap: xSizeOfSmallestFreeBlockInBytes %d",
+					heap.xSizeOfSmallestFreeBlockInBytes);
+			dbg("heap: xNumberOfFreeBlocks %d",
+					heap.xNumberOfFreeBlocks);
+			dbg("heap: xMinimumEverFreeBytesRemaining %d",
+					heap.xMinimumEverFreeBytesRemaining);
+			dbg("heap: xNumberOfSuccessfulAllocations %d",
+					heap.xNumberOfSuccessfulAllocations);
+			dbg("heap: xNumberOfSuccessfulFrees %d",
+					heap.xNumberOfSuccessfulFrees);
+			break;
+		case DEBUG_RUNTIME_LIST:
+		case DEBUG_RUNTIME_STATS:
+			uint16_t stats_size = task_count * 48;
+			stats = malloc(stats_size);
+			if (!stats) {
+				dbg_err("malloc() fail on stats %d", option);
+				return;
+			}
+			if (option == DEBUG_RUNTIME_LIST) {
+				stdio_puts("Name\tState\tPriority\tStack\tNum");
+				stdio_puts("****************************************");
+				vTaskListTasks(stats, stats_size);
+			} else if (option == DEBUG_RUNTIME_STATS) {
+				stdio_puts("Task\tAbs Time\t% Time");
+				stdio_puts("****************************************");
+				vTaskGetRunTimeStatistics(stats, stats_size);
+			}
+			stdio_puts(stats);
+			free(stats);
+			break;
+	}
+#else
+	dbg("need RUNTIME_FREERTOS_REPORTING for dbg_stats %d", option);
+#endif
 }
 
 void dbg_init(void)

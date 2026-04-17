@@ -246,14 +246,14 @@ switcherSetup();
 function bluetoothScan()
 {
 	if (! port) return;
-	const a = new Uint8Array([0x88]);
+	const a = new Uint8Array([0xE0]);
 	writer.write(a);
 }
 
 function traceLogging()
 {
 	if (! port) return;
-	const a = new Uint8Array([0x89]);
+	const a = new Uint8Array([0xE8]);
 	writer.write(a);
 }
 

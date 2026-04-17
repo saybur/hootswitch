@@ -9,6 +9,11 @@
 #ifndef __CONTROL_H__
 #define __CONTROL_H__
 
+#define CONTROL_BT_SCAN               0xE0
+#define CONTROL_DBG_TRACE             0xE8
+#define CONTROL_DBG_HEAP              0xEA
+#define CONTROL_DBG_LIST              0xEB
+#define CONTROL_DBG_STATS             0xEC
 #define CONTROL_REBOOT                0xF1
 #define CONTROL_REBOOT_DEBUG          0xF2
 

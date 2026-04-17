@@ -56,6 +56,11 @@ if (DEFINED HOOTSWITCH_WIRELESS)
 			${BLUEPAD32_PATH}/include)
 endif()
 
+if (RUNTIME_FREERTOS_REPORTING EQUAL 1)
+	message("including runtime FreeRTOS reporting")
+	target_compile_definitions(hootswitch PRIVATE RUNTIME_FREERTOS_REPORTING)
+endif()
+
 add_subdirectory(firmware)
 
 target_link_libraries(hootswitch

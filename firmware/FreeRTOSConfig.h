@@ -78,10 +78,19 @@
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
+#ifdef RUNTIME_FREERTOS_REPORTING
 /* Run time and task stats gathering related definitions. */
+#define configGENERATE_RUN_TIME_STATS           1
+#define configUSE_TRACE_FACILITY                1
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
+extern uint32_t debug_time_us_32(void);
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() // no-op
+#define portGET_RUN_TIME_COUNTER_VALUE() debug_time_us_32()
+#else
 #define configGENERATE_RUN_TIME_STATS           0
 #define configUSE_TRACE_FACILITY                1
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#endif
 
 /* Co-routine related definitions. */
 #define configUSE_CO_ROUTINES                   0

@@ -19,6 +19,9 @@
 #define SER_CMD_KBD_UP        0x87
 #define SER_CMD_BTSCAN        0x88
 #define SER_CMD_TRACE         0x89
+#define SER_CMD_DBG_HEAP      0x8A
+#define SER_CMD_DBG_LIST      0x8B
+#define SER_CMD_DBG_STATS     0x8C
 
 void serial_enqueue(uint8_t);
 
