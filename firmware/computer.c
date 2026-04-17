@@ -25,6 +25,7 @@
 #include "driver.h"
 #include "hardware.h"
 #include "led.h"
+#include "notify.h"
 #include "util.h"
 
 /*
@@ -987,7 +988,7 @@ static void computer_switch_to(uint8_t target)
 	// finally update
 	active_computer = next;
 	if (beep) {
-		buzzer_chirp();
+		notify_user(NOTIFY_COMPUTER_SWITCH);
 	}
 	dbg("sw ok!");
 }
@@ -1102,7 +1103,11 @@ static void computer_poll(void)
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		if (computers[i].phase != PHASE_IDLE) activity_led = true;
 	}
-	led_activity(activity_led);
+	if (activity_led) {
+		led_activity_on();
+	} else {
+		led_activity_off();
+	}
 }
 
 void computer_task(__unused void *parameters)

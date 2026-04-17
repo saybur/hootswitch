@@ -78,8 +78,6 @@
 #define HOST_PIO            pio1
 #define HOST_PIO_IRQ0       PIO1_IRQ_0
 
-#define BUZZER_TIMER        2
-#define BUZZER_TIMER_IRQ    TIMER_IRQ_2
 #define COMPUTER_TIMER      1
 #define COMPUTER_TIMER_IRQ  TIMER_IRQ_1
 #define HOST_TIMER          0

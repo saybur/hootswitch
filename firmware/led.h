@@ -9,21 +9,39 @@
 #ifndef __LED_H__
 #define __LED_H__
 
+#include "hardware.h"
+
+/*
+ * LED control. Drivers and handlers should not use these functions directly.
+ * Instead, tie into the LEDs via the notification system.
+ */
+
 /**
  * Activates or deactivates the activity light. This is assumed to be yellow
- * and indicates normal activity.
- *
- * @param state  true for on, off for false.
+ * and is toggled based on bus activity.
  */
-void led_activity(bool state);
+static inline void led_activity_on(void)
+{
+	gpio_set_mask(1UL << LED_ACT_PIN);
+}
+static inline void led_activity_off(void)
+{
+	gpio_clr_mask(1UL << LED_ACT_PIN);
+}
 
 /**
  * Activates or deactivates the error light. This is assumed to be red and
  * represents some exceptional condition.
- *
- * @param state  true for on, off for false.
  */
-void led_error(bool state);
+static inline void led_error_on(void)
+{
+	gpio_set_mask(1UL << LED_ERR_PIN);
+}
+
+static inline void led_error_off(void)
+{
+	gpio_clr_mask(1UL << LED_ERR_PIN);
+}
 
 /**
  * Activates one of the machine indicator LEDs at a chosen intensity level.

@@ -11,51 +11,46 @@
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
-#include "hardware/irq.h"
 #include "hardware/pwm.h"
-#include "hardware/sync.h"
-#include "hardware/timer.h"
 
 #include "buzzer.h"
 #include "hardware.h"
 
-#define FREQ_MIN        300
+#define FREQ_MIN        50
 #define FREQ_MAX        8000
-#define PWM_DIV         64
-
-#define CHIRP_FREQ      600
-#define CHIRP_DURATION  100
-#define CHIRP_VOLUME    3
+#define PWM_DIV         16
 
 static volatile bool buzzer_enabled = true;
 static uint8_t slice;
 static uint8_t chan;
-
-static void buzzer_callback(void)
-{
-	pwm_set_chan_level(slice, chan, 0);
-	timer_hw->intr = 1U << BUZZER_TIMER;
-}
-
-void buzzer_chirp(void)
-{
-	buzzer_play(CHIRP_FREQ, CHIRP_DURATION, CHIRP_VOLUME);
-}
 
 void buzzer_enable(bool enabled)
 {
 	buzzer_enabled = enabled;
 }
 
-void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol)
+void buzzer_play(uint16_t freq, uint8_t vol)
 {
-	if (duration_ms == 0) return;
-	if (freq < 50) freq = FREQ_MIN;
+	if (vol == 0) {
+		// stop any ongoing playback
+		pwm_set_chan_level(slice, chan, 0);
+		pwm_set_wrap(slice, 1);
+		return;
+	}
+
+	if (freq < FREQ_MIN) freq = FREQ_MIN;
 	if (freq > FREQ_MAX) freq = FREQ_MAX;
 	if (vol > 7) vol = 7;
 
-	const uint32_t n = clock_get_hz(clk_sys) / (PWM_DIV << 1);
-	uint16_t top = n / freq - 1;
+	/*
+	 * Rewriting the formula from datasheet 4.5.2.6 should yield this:
+	 *
+	 * top = fclk / ((CSR_PH_CORRECT + 1) * fPWM * DIV_INT)
+	 *
+	 * Do wish I'd paid more attention in algebra instead of messing around on
+	 * my graphing calculator :(
+	 */
+	uint16_t top = clock_get_hz(clk_sys) / (2 * PWM_DIV * freq);
 
 #ifndef BUZZER_DISABLE
 	// even if disabled go through most of the motions to keep timing similar
@@ -64,9 +59,6 @@ void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol)
 		pwm_set_chan_level(slice, chan, top >> (8 - vol));
 	}
 #endif
-
-	timer_hardware_alarm_set_target(timer_hw, BUZZER_TIMER,
-			time_us_64() + duration_ms * 1000);
 }
 
 void buzzer_init(void)
@@ -80,9 +72,4 @@ void buzzer_init(void)
 	pwm_set_clkdiv_int_frac(slice, PWM_DIV, 0);
 	pwm_set_wrap(slice, 1);
 	pwm_set_enabled(slice, true);
-
-	hardware_alarm_claim(BUZZER_TIMER);
-	irq_set_exclusive_handler(BUZZER_TIMER_IRQ, buzzer_callback);
-	hw_set_bits(&timer_hw->inte, 1U << BUZZER_TIMER);
-	irq_set_enabled(BUZZER_TIMER_IRQ, true);
 }

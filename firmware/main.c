@@ -24,6 +24,7 @@
 #include "host.h"
 #include "hardware.h"
 #include "led.h"
+#include "notify.h"
 #include "usb.h"
 
 #ifdef HOOTSWITCH_WIRELESS
@@ -41,6 +42,7 @@
 #pragma GCC optimize ("O0")
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
+	led_error_on();
 	dbg_err("___stack overflow!___ %s", pcTaskName);
 	while (1);
 }
@@ -87,15 +89,19 @@ static void init_task(__unused void *parameters)
 			bool led = false;
 			while (! stdio_usb_connected()) {
 				vTaskDelay(100);
-				led_activity(led);
+				if (led) {
+					led_activity_on();
+				} else {
+					led_activity_off();
+				}
 				led = !led;
 			}
-			led_activity(false);
+			led_activity_off();
 			break;
 	}
 
 	dbg(PROGRAM_NAME);
-	led_activity(true);
+	led_activity_on();
 
 #ifdef HOOTSWITCH_WIRELESS
 	// need btstack loaded to get TLV config
@@ -110,12 +116,12 @@ static void init_task(__unused void *parameters)
 	host_err herr;
 	if (herr = host_reset_bus()) {
 		dbg_err("host bus reset err %d", herr);
-		led_error(true);
+		notify_user(NOTIFY_HOST_INIT_RESET_FAIL);
 	}
 	busy_wait_ms(1);
 	if (herr = host_reset_devices()) {
 		dbg_err("host device reset err %d", herr);
-		led_error(true);
+		notify_user(NOTIFY_HOST_INIT_NO_DEVICES);
 	} else {
 		dbg("host reset ok!");
 	}
@@ -153,6 +159,8 @@ int main(void)
 			NULL, configMAX_PRIORITIES - 1, NULL);
 	xTaskCreate(dbg_task, "debug", DEFAULT_STACK,
 			NULL, configMAX_PRIORITIES - 1, NULL);
+	xTaskCreate(notify_task, "notify", DEFAULT_STACK,
+			NULL, DEFAULT_PRIORITY, NULL);
 
 	vTaskStartScheduler();
 }

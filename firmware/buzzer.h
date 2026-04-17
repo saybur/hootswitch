@@ -10,11 +10,6 @@
 #define __BUZZER_H__
 
 /**
- * Shorthand for calling buzzer_play(), using a system default alert noise.
- */
-void buzzer_chirp(void);
-
-/**
  * Enables or disables the buzzer component.
  *
  * @param enabled      if false mute the buzzer.
@@ -22,16 +17,16 @@ void buzzer_chirp(void);
 void buzzer_enable(bool enabled);
 
 /**
- * Simple square wave PWM audio on the buzzer.
+ * Simple square wave PWM audio on the buzzer. This continues to play until
+ * stopped by zeroing the volume.
  *
  * Don't expect much out of this, the code was thrown together quickly. It does
  * OK for making chirps, but improvements here are welcome.
  *
  * @param freq         approximate playback frequency.
- * @param duration_ms  approximate time to play, in milliseconds.
  * @param vol          rough volume step from 0 (0%) to 7 (50%).
  */
-void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol);
+void buzzer_play(uint16_t freq, uint8_t vol);
 
 /**
  * Sets up the buzzer. Called during init, do not invoke as a user.

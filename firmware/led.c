@@ -22,16 +22,6 @@ typedef struct {
 } led_c;
 static led_c leds[LED_C_COUNT];
 
-void led_activity(bool state)
-{
-	gpio_put(LED_ACT_PIN, state);
-}
-
-void led_error(bool state)
-{
-	gpio_put(LED_ERR_PIN, state);
-}
-
 void led_machine(uint8_t mach, uint8_t level)
 {
 	if (mach >= LED_C_COUNT) return;

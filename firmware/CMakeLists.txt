@@ -31,5 +31,6 @@ target_sources(hootswitch PRIVATE
 		keymap.c
 		led.c
 		main.c
+		notify.c
 		util.c
 		)

@@ -24,6 +24,7 @@
 
 #include "config.h"
 #include "debug.h"
+#include "notify.h"
 
 #include "virtual.h"
 
@@ -80,11 +81,13 @@ static uni_error_t my_platform_on_device_discovered(bd_addr_t addr,
 static void my_platform_on_device_connected(uni_hid_device_t* d)
 {
 	dbg("bt device connected: %p", d);
+	notify_user(NOTIFY_DEVICE_CONNECT);
 }
 
 static void my_platform_on_device_disconnected(uni_hid_device_t* d)
 {
 	dbg("bt device disconnected: %p", d);
+	notify_user(NOTIFY_DEVICE_DISCONNECT);
 }
 
 static uni_error_t my_platform_on_device_ready(uni_hid_device_t* d)
