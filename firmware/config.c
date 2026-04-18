@@ -87,12 +87,9 @@ config_err config_write(uint16_t tag, uint8_t* data, uint8_t data_len)
 
 config_err config_setup(void)
 {
+#ifdef HOOTSWITCH_WIRELESS
 	if (configured) return CONFIG_OK;
 
-#ifdef HOOTSWITCH_WIRELESS
-	/*
-
-	 */
 	btstack_tlv_get_instance(&tlv, (void**)&tlv_context);
 	if (!tlv || !tlv_context) {
 		dbg_err("tlv setup failed!");
