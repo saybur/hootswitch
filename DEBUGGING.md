@@ -64,3 +64,10 @@ _most definitely_ not an authority on `gdb`):
 * `p X` prints variable X.
 * `p/x *0x0` prints in hex from the address, useful for peripheral registers.
 * `i threads` prints information relevant to FreeRTOS thread execution.
+
+Use `arm-none-eabi-size -A hootswitch.elf` to get an idea about RAM usage.
+
+If compiled with `RUNTIME_FREERTOS_REPORTING` additional serial commands are
+made available to invoke various FreeRTOS task reporting functions. To use,
+invoke `cmake` with `-DRUNTIME_FREERTOS_REPORTING=1`. Refer to `control.h` and
+`debug.h` for a list of commands.

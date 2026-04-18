@@ -1,18 +1,9 @@
 /*
  * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <string.h>
@@ -96,7 +87,7 @@ static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 {
 	joystick *dev = &devices[ref];
 
-	switch (devices[ref].mode) {
+	switch (dev->mode) {
 		case MODE_FIREBIRD:
 			if (hndl == DEFAULT_HANDLER || hndl == MODE_FIREBIRD) {
 				dev->dhi[comp] = hndl;
@@ -130,6 +121,13 @@ static dev_driver joystick_driver = {
 	.set_handle_func = drvr_set_handle
 };
 
+bool joystick_enabled(uint8_t id)
+{
+	if (active >= COMPUTER_COUNT) return false;
+	if (id >= device_count) return false;
+	return devices[id].dhi[active] != DEFAULT_HANDLER;
+}
+
 bool joystick_register(uint8_t *id, joystick_mode mode)
 {
 	if (device_count >= MAX_DEVICES) return false;
@@ -146,8 +144,8 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 	if (active >= COMPUTER_COUNT) return;
 	if (id >= device_count) return;
 
-	dbg("gjoy %d: x1:%d, y1:%d, x2:%d, y2:%d btn:%d",
-			id, jdata->x1, jdata->y1, jdata->x2, jdata->y2, jdata->buttons);
+	dbg_trace("gjoy %d: x:%d y:%d bk:%d th:%d btn:%d",
+			id, jdata->x, jdata->y, jdata->brake, jdata->throttle, jdata->buttons);
 
 	// remap data from the real device to the virtual handler
 	uint8_t odata[8];
@@ -157,29 +155,34 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 			odata[0] = ((jdata->buttons) >> 16) & 0xFF;
 			odata[1] = ((jdata->buttons) >> 8) & 0xFF;
 			odata[2] = (jdata->buttons) & 0xFF;
-			odata[3] = jdata->x1 + 0x80;
-			odata[4] = jdata->y1 + 0x80;
-			odata[5] = jdata->y2 + 0x80;
-			odata[6] = jdata->x2 + 0x80;
+			odata[3] = jdata->x + 0x80;
+			odata[4] = jdata->y + 0x80;
+			odata[5] = jdata->throttle;
+			odata[6] = jdata->brake;
 			odata[7] = 0;
 			odata_len = 8;
 			break;
 		case MODE_MOUSESTICK:
-			odata[0] = jdata->x1 + 0x80;
-			odata[1] = jdata->y1 + 0x80;
+			odata[0] = jdata->x + 0x80;
+			odata[1] = jdata->y + 0x80;
 			odata[2] = (jdata->buttons) & 0xFF;
 			odata_len = 3;
 			break;
 		default:
-			int8_t x = jdata->x1;
-			int8_t y = jdata->y1;
-			// decrease mouse movement radius to avoid wild pointer behavior
-			uint8_t rshift = 3;
+			int8_t x = jdata->x;
+			int8_t y = jdata->y;
 			// store as mouse movement
-			util_mouse_encode(odata, rshift, x, y, jdata->buttons);
+			util_mouse_encode(odata, x, y, jdata->buttons);
 			odata_len = 2;
 	}
 
 	// store input data directly into the response registers
 	computer_data_set(active, devices[id].drv_idx, 0, odata, odata_len, false);
+}
+
+bool joystick_waiting(uint8_t id)
+{
+	if (active >= COMPUTER_COUNT) return false;
+	if (id >= device_count) return false;
+	return computer_data_waiting(active, devices[id].drv_idx, 0); 
 }

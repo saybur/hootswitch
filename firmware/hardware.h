@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #ifndef __HARDWARE_H__
@@ -60,6 +51,13 @@
 #define C4_PSW_PIN          8
 
 /*
+ * First revision hardware has green LEDs that are quite eye-piercing. To tone
+ * it down this value is used by LED setting code to tweak the PWM level (from
+ * 0-255) of those elements.
+ */
+#define LED_MACHINE_LEVEL   70
+
+/*
  * ----------------------------------------------------------------------------
  *     RESOURCE DEFINITIONS / ALIASES
  *   Use care changing anything past this line!
@@ -87,8 +85,6 @@
 #define HOST_PIO            pio1
 #define HOST_PIO_IRQ0       PIO1_IRQ_0
 
-#define BUZZER_TIMER        2
-#define BUZZER_TIMER_IRQ    TIMER_IRQ_2
 #define COMPUTER_TIMER      1
 #define COMPUTER_TIMER_IRQ  TIMER_IRQ_1
 #define HOST_TIMER          0

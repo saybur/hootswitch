@@ -1,24 +1,15 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
-#include "hardware/gpio.h"
-#include "hardware/pwm.h"
+#include <stdbool.h>
+#include <pico/stdlib.h>
+#include <hardware/gpio.h>
+#include <hardware/pwm.h>
 
 #include "hardware.h"
 #include "led.h"
@@ -29,28 +20,33 @@ typedef struct {
 	uint8_t gpio;
 	uint8_t slice;
 	uint8_t chan;
+	volatile uint8_t level;
 } led_c;
 static led_c leds[LED_C_COUNT];
-
-void led_board(bool state)
-{
-	cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, state);
-}
-
-void led_activity(bool state)
-{
-	gpio_put(LED_ACT_PIN, state);
-}
-
-void led_error(bool state)
-{
-	gpio_put(LED_ERR_PIN, state);
-}
 
 void led_machine(uint8_t mach, uint8_t level)
 {
 	if (mach >= LED_C_COUNT) return;
+	leds[mach].level = level;
 	pwm_set_chan_level(leds[mach].slice, leds[mach].chan, level);
+}
+
+void led_machine_overlay(uint8_t mask, uint8_t level)
+{
+	for (uint8_t i = 0; i < LED_C_COUNT; i++) {
+		if (mask & (1U << i)) {
+			pwm_set_chan_level(leds[i].slice, leds[i].chan, level);
+		}
+	}
+}
+
+void led_machine_reset(void)
+{
+	for (uint8_t i = 0; i < LED_C_COUNT; i++) {
+		pwm_set_chan_level(leds[i].slice,
+				leds[i].chan,
+				leds[i].level);
+	}
 }
 
 void led_init(void)

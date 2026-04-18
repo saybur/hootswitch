@@ -1,20 +1,12 @@
 /*
  * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+#include <stdbool.h>
 #include "pico/stdlib.h"
 
 #include "FreeRTOS.h"
@@ -202,6 +194,17 @@ static void down_update(uint8_t code, uint32_t *down)
 }
 
 /**
+ * Returns true if the down bit is set, false otherwise.
+ */
+static bool key_is_down(uint8_t code, uint32_t *down)
+{
+	uint8_t key = code & 0x7F;
+	uint8_t idx = key >> 5;
+	uint32_t mask = 1U << (key & 0x1F);
+	return down[idx] & mask;
+}
+
+/**
  * Called following a computer reset to send any key-down events and set
  * register 2 appropriately for the virtual keyboard. This only happens when
  * the computer is the *active* system, otherwise the keyboard reverts to an
@@ -330,15 +333,15 @@ static dev_driver keyboard_driver = {
 	.set_handle_func = drvr_set_handle
 };
 
-void keyboard_enqueue(uint8_t id, keyboard_message *m)
+bool keyboard_enqueue(uint8_t id, keyboard_message *m)
 {
-	if (active >= COMPUTER_COUNT) return;
-	if (id >= keyboard_count) return;
+	if (active >= COMPUTER_COUNT) return false;
+	if (id >= keyboard_count) return false;
 
 	uint8_t hi = m->data[1];
 	uint8_t lo = m->data[0];
 
-	dbg("kbd: lo:0x%02X, hi:0x%02X", lo, hi);
+	dbg_trace("kbd: lo:0x%02X, hi:0x%02X", lo, hi);
 
 	// handle power switch activation
 	if (lo == 0x7F && hi == 0x7F) {
@@ -358,7 +361,7 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 				&& lo < ONE_KEY_DOWN + sizeof(codes_to_comp_idx)) {
 			// match, veto keystroke and switch instead
 			computer_switch(codes_to_comp_idx[lo - ONE_KEY_DOWN], true);
-			return;
+			return false;
 		}
 	} else {
 		keyboards[id].sw_seq = 0;
@@ -383,7 +386,7 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m)
 	}
 
 	// enqueue data, dropping if queue is full
-	xQueueSend(keyboards[id].mem[active].queue, m, 0);
+	return pdPASS == xQueueSend(keyboards[id].mem[active].queue, m, 0);
 }
 
 bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))
@@ -403,4 +406,35 @@ bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t))
 
 	kbd->reg2_callback = reg2_callback;
 	return driver_register(&kbd->drv_idx, &keyboard_driver, *id);
+}
+
+void keyboard_sequence(uint8_t id, uint8_t *c, uint8_t len)
+{
+	if (active >= COMPUTER_COUNT) return;
+	if (id >= keyboard_count) return;
+
+	keyboard_message m;
+	m.data[0] = 0xFF;
+	m.data[1] = 0xFF;
+	m.length = 2;
+
+	for (uint16_t i = 0; i < len; i++) {
+		bool is_down = key_is_down(c[i], keyboards[id].down);
+		bool ask_down = (c[i] & 0x80) == 0;
+		if (is_down != ask_down) {
+			if (m.data[0] == 0xFF) {
+				m.data[0] = c[i];
+			} else if (m.data[1] == 0xFF) {
+				m.data[1] = c[i];
+				keyboard_enqueue(id, &m);
+				m.data[0] = 0xFF;
+				m.data[1] = 0xFF;
+			}
+		}
+	}
+
+	// send residual
+	if (m.data[0] != 0xFF) {
+		keyboard_enqueue(id, &m);
+	}
 }

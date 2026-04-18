@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024-2025 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <string.h>
@@ -233,7 +224,7 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg, bool pri)
 	if (reg == 0 && xSemaphoreTake(mice[ref].sem, portMAX_DELAY)) {
 		if (mice[ref].pending) {
 
-			util_mouse_encode(data, 0, mice[ref].x, mice[ref].y, mice[ref].buttons);
+			util_mouse_encode(data, mice[ref].x, mice[ref].y, mice[ref].buttons);
 			len = (extended || pri) ? 3 : 2;
 			if (computer_data_offer(active, drv_idx, 0, data, len)) {
 				mice[ref].pending = false;
@@ -243,22 +234,22 @@ static void drvr_talk(uint8_t comp, uint32_t ref, uint8_t reg, bool pri)
 
 		if (pri) {
 			if (len == 3) {
-				dbg("kens-pri (tlk): %d %d %d", data[0], data[1], data[2]);
+				dbg_trace("kens-pri (tlk): %d %d %d", data[0], data[1], data[2]);
 			} else if (len == 2) {
-				dbg("kens-pri (tlk): %d %d", data[0], data[1]);
+				dbg_trace("kens-pri (tlk): %d %d", data[0], data[1]);
 			}
 		} else {
 			if (len == 3) {
-				dbg("kens-sec (tlk): %d %d %d", data[0], data[1], data[2]);
+				dbg_trace("kens-sec (tlk): %d %d %d", data[0], data[1], data[2]);
 			} else if (len == 2) {
-				dbg("kens-sec (tlk): %d %d", data[0], data[1]);
+				dbg_trace("kens-sec (tlk): %d %d", data[0], data[1]);
 			}
 		}
 	} else {
 		if (pri) {
-			dbg("kens-pri (tlk) skip");
+			dbg_trace("kens-pri (tlk) skip");
 		} else {
-			dbg("kens-sec (tlk) skip");
+			dbg_trace("kens-sec (tlk) skip");
 		}
 	}
 }
@@ -309,7 +300,7 @@ static void drvr_pri_listen(uint8_t comp, uint32_t ref, uint8_t reg,
 			reg2, REGISTER_2_LEN, true);
 
 	// report messaging
-	dbg("kens L2 %02X%02X%02X%02X%02X%02X%02X",
+	dbg_trace("kens L2 %02X%02X%02X%02X%02X%02X%02X",
 			reg2[0], reg2[1], reg2[2], reg2[3], reg2[4], reg2[5], reg2[6]);
 }
 
@@ -463,7 +454,7 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 			// encode the resulting output
 			uint8_t data_out[5];
-			util_mouse_encode(data_out, 0, xt, yt, buttons);
+			util_mouse_encode(data_out, xt, yt, buttons);
 
 			// try to send data, or if send can't be done, store
 			if (computer_data_offer(active, drv_idx, 0,
@@ -479,22 +470,22 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 
 			if (drv_idx == mice[i].drv_idx_pri) {
 				if (data_out_len == 3) {
-					dbg("kens-pri: %d %d %d", data[0], data[1], data[2]);
+					dbg_trace("kens-pri: %d %d %d", data[0], data[1], data[2]);
 				} else if (data_out_len == 2) {
-					dbg("kens-pri: %d %d", data[0], data[1]);
+					dbg_trace("kens-pri: %d %d", data[0], data[1]);
 				}
 			} else {
 				if (data_out_len == 3) {
-					dbg("kens-sec: %d %d %d", data[0], data[1], data[2]);
+					dbg_trace("kens-sec: %d %d %d", data[0], data[1], data[2]);
 				} else if (data_out_len == 2) {
-					dbg("kens-sec: %d %d", data[0], data[1]);
+					dbg_trace("kens-sec: %d %d", data[0], data[1]);
 				}
 			}
 		} else {
 			if (drv_idx == mice[i].drv_idx_pri) {
-				dbg("kens-pri: skip");
+				dbg_trace("kens-pri: skip");
 			} else {
-				dbg("kens-sec: skip");
+				dbg_trace("kens-sec: skip");
 			}
 		}
 	}

@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <stdbool.h>
@@ -34,6 +25,7 @@
 #include "driver.h"
 #include "hardware.h"
 #include "led.h"
+#include "notify.h"
 #include "util.h"
 
 /*
@@ -54,9 +46,6 @@
 #define PIO_ATN_MIN             386
 #define TIME_RESET_THRESH       400
 #define RX_MAX_BITS             64
-
-#define LED_ACTIVE              70
-#define LED_DETECT              40
 
 typedef enum {
 	PHASE_IDLE,
@@ -793,6 +782,16 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 	}
 }
 
+bool computer_data_waiting(uint8_t comp, uint8_t drv_idx, uint8_t reg)
+{
+	if (comp >= COMPUTER_COUNT) return false;
+	if (drv_idx >= computers[comp].device_count) return false;
+	if (reg > 2) return false;
+
+	comp_device *dev = &computers[comp].devices[drv_idx];
+	return dev->talk[reg].length > 0;
+}
+
 void computer_queue_set(uint8_t comp, uint8_t drv_idx, QueueHandle_t queue)
 {
 	if (comp >= COMPUTER_COUNT) return;
@@ -823,7 +822,7 @@ void computer_init(void)
 	rand_idx = (uint8_t) (get_rand_32() % sizeof(randt));
 
 	// setup storage
-	uint8_t sm_mask;
+	uint8_t sm_mask = 0;
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		sm_mask |= (1U << i);
 		computers[i] = (computer_t) {
@@ -967,7 +966,7 @@ static void computer_switch_to(uint8_t target)
 	// update LEDs to match
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		if (next == i) {
-			led_machine(i, LED_ACTIVE);
+			led_machine(i, LED_MACHINE_LEVEL);
 		} else {
 			led_machine(i, 0);
 		}
@@ -986,7 +985,7 @@ static void computer_switch_to(uint8_t target)
 	// finally update
 	active_computer = next;
 	if (beep) {
-		buzzer_chirp();
+		notify_user(NOTIFY_COMPUTER_SWITCH);
 	}
 	dbg("sw ok!");
 }
@@ -1101,7 +1100,11 @@ static void computer_poll(void)
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		if (computers[i].phase != PHASE_IDLE) activity_led = true;
 	}
-	led_activity(activity_led);
+	if (activity_led) {
+		led_activity_on();
+	} else {
+		led_activity_off();
+	}
 }
 
 void computer_task(__unused void *parameters)

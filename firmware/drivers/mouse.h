@@ -1,18 +1,9 @@
 /*
  * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #ifndef __MOUSE_H__
@@ -52,10 +43,10 @@ bool mouse_register(uint8_t *id, mouse_mode mode, uint8_t *reg1);
  * DHID/extended state with the computer(s).
  *
  * @param id   the ID to use from the original registration call.
- * @param dx   change in X-axis position.
- * @param dy   change in Y-axis position.
+ * @param x    change in X-axis position.
+ * @param y    change in Y-axis position.
  * @param btn  button state bitmask following ADB convention: 0=down, LSB b1
  */
-bool mouse_update(uint8_t id, int32_t dx, int32_t dy, uint8_t btn);
+bool mouse_update(uint8_t id, int16_t x, int16_t y, uint8_t btn);
 
 #endif /* __MOUSE_H__ */

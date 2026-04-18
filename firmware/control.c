@@ -1,26 +1,19 @@
 /*
- * Copyright (C) 2024-2025 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <stdio.h>
-#include "pico/stdlib.h"
-#include "hardware/watchdog.h"
+#include <hardware/watchdog.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <tusb.h>
+
+#include <FreeRTOS.h>
+#include <stream_buffer.h>
+#include <task.h>
 
 #include "computer.h"
 #include "config.h"
@@ -29,9 +22,14 @@
 
 #include "drivers/serial.h"
 
+#ifdef HOOTSWITCH_WIRELESS
+#include "btscan.h"
+#endif
+
 #define WATCHDOG_SCRATCH_REG   0
 
 #define CONTROL_WDRST_DEBUG    0xA5A5A5A5
+#define CONTROL_BUFFER_SIZE    64
 
 static volatile control_mode_type mode = CONTROL_MODE_IDLE;
 
@@ -49,25 +47,34 @@ static void control_reboot(bool debug)
 
 static void control_enqueue(unsigned char c)
 {
-	if (c >= 0xF0) {
+	if (c >= 0xE0) {
 		switch (c) {
-		case CONTROL_REBOOT:
-			control_reboot(false);
-			break;
-		case CONTROL_REBOOT_DEBUG:
-			control_reboot(true);
-			break;
-		case CONTROL_START_CONFIG_WRITE:
-			mode = CONTROL_MODE_CONFIG_WRITE;
+			case SER_CMD_BTSCAN:
+#ifdef HOOTSWITCH_WIRELESS
+				bt_scan();
+#endif
+				break;
+			case CONTROL_DBG_TRACE:
+				dbg_trace_enable(!dbg_trace_is_enabled());
+				break;
+			case CONTROL_DBG_HEAP:
+				dbg_stats(DEBUG_RUNTIME_HEAP);
+				break;
+			case CONTROL_DBG_LIST:
+				dbg_stats(DEBUG_RUNTIME_LIST);
+				break;
+			case CONTROL_DBG_STATS:
+				dbg_stats(DEBUG_RUNTIME_STATS);
+				break;
+			case CONTROL_REBOOT:
+				control_reboot(false);
+				break;
+			case CONTROL_REBOOT_DEBUG:
+				control_reboot(true);
+				break;
 		}
 	} else if (mode == CONTROL_MODE_FLYBYWIRE) {
 		serial_enqueue(c);
-	} else if (mode == CONTROL_MODE_CONFIG_WRITE) {
-		bool resp = false;
-		config_write_serial_byte(c, &resp);
-		if (resp) {
-			mode == CONTROL_MODE_IDLE;
-		}
 	}
 }
 
@@ -95,11 +102,42 @@ void control_start(void)
 	mode = CONTROL_MODE_FLYBYWIRE;
 }
 
+/*
+ * ----------------------------------------------------------------------------
+ *   Data Handoff Logic
+ * ----------------------------------------------------------------------------
+ *
+ * This uses a FreeRTOS stream buffer to pass from producer (TinyUSB) to
+ * consumer (control task).
+ */
+
+static volatile StreamBufferHandle_t stream = NULL;
+
+void tud_cdc_rx_cb(uint8_t itf)
+{
+	if (!stream) return;
+
+	uint8_t data[CONTROL_BUFFER_SIZE];
+	uint32_t data_read = tud_cdc_read(data, sizeof(data));
+	if (data_read > 0) {
+		uint32_t data_write = xStreamBufferSend(stream, data, data_read, 0);
+		if (data_write != data_read) {
+			dbg("cdc read dropped %d bytes", data_read - data_write);
+		}
+	}
+}
+
 void control_task(__unused void *parameters)
 {
-	unsigned char c;
+	// create stream for 2x max read size above is, triggering on 1 byte
+	stream = xStreamBufferCreate(CONTROL_BUFFER_SIZE * 2, 0);
+
+	unsigned char data[CONTROL_BUFFER_SIZE];
 	while (true) {
-		c = getc(stdin);
-		control_enqueue(c);
+		uint16_t data_read = xStreamBufferReceive(
+				stream, data, CONTROL_BUFFER_SIZE, portMAX_DELAY);
+		for (uint16_t i = 0; i < data_read; i++) {
+			control_enqueue(data[i]);
+		}
 	}
 }

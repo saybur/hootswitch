@@ -1,18 +1,9 @@
 /*
  * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <stdio.h>
@@ -30,9 +21,8 @@
 #include "hardware.h"
 #include "util.h"
 
-#include "keyboard.h"
-#include "mouse.h"
 #include "serial.h"
+#include "virtual.h"
 
 /*
  * Driver for sending UART keystrokes via the standard mouse protocol.
@@ -44,9 +34,7 @@
  */
 
 static uint8_t command;
-static uint8_t kbd_idx;
-static uint8_t mse_idx;
-static uint8_t mse_cache[2];
+static uint8_t mse_cache[2] = { 0x80, 0x80 };
 
 /*
  * ----------------------------------------------------------------------------
@@ -56,19 +44,14 @@ static uint8_t mse_cache[2];
 
 static void serial_kbd_send(bool up, uint8_t c)
 {
-	keyboard_message msg;
-	msg.length = 2;
-	msg.data[0] = (up ? 0x80 : 0x00) | (c & 0x7F);
-	msg.data[1] = 0xFF;
-	keyboard_enqueue(kbd_idx, &msg);
+	virtual_keyboard_offer(up, c);
 }
 
 static void serial_mse_send()
 {
-	int16_t x, y;
-	uint8_t btn;
-	util_mouse_decode(mse_cache, 2, &x, &y, &btn);
-	mouse_update(mse_idx, x, y, btn);
+	virtual_mouse_data data;
+	util_mouse_decode(mse_cache, 2, &(data.x), &(data.y), &(data.buttons));
+	virtual_mouse_offer(&data);
 }
 
 void serial_enqueue(uint8_t c) {
@@ -106,10 +89,4 @@ void serial_enqueue(uint8_t c) {
 			break;
 		}
 	}
-}
-
-void serial_init(void)
-{
-	mouse_register(&mse_idx, MOUSE_MODE_100CPI, NULL);
-	keyboard_register(&kbd_idx, NULL);
 }

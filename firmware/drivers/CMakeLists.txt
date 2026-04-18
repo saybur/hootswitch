@@ -6,4 +6,5 @@ target_sources(hootswitch PRIVATE
 		keyboard.c keyboard_handler.c
 		mouse.c mouse_handler.c
 		serial.c
+		virtual.c
 		)

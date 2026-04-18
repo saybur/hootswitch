@@ -1,24 +1,17 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
+#include "hardware/timer.h"
 
 #include "FreeRTOS.h"
 
@@ -26,22 +19,44 @@
 #include "computer.h"
 #include "hardware.h"
 
+#ifdef HOOTSWITCH_WIRELESS
+#include "btscan.h"
+#endif
+
 #define SAMPLE_RATE_IN_MS 20
 
-static uint32_t sw_cnt;
+#define HOLD_TIME_SCAN   3000000L   // 3s
+#define HOLD_TIME_SWITCH 50000L     // 50ms
+
+static void button_apply(uint64_t duration)
+{
+	if (duration > HOLD_TIME_SCAN) {
+#ifdef HOOTSWITCH_WIRELESS
+		bt_scan();
+#else
+		computer_switch(255, true);
+#endif
+	} else if (duration > HOLD_TIME_SWITCH) {
+		computer_switch(255, true);
+	}
+}
 
 void button_task(void *parameters)
 {
-	const TickType_t delay_time = SAMPLE_RATE_IN_MS / portTICK_PERIOD_MS;
+	bool pressed = false;
+	uint64_t press_time = 0;
 
-	while (1) {
-		vTaskDelay(delay_time);
+	while (true) {
+		vTaskDelay(SAMPLE_RATE_IN_MS / portTICK_PERIOD_MS);
 		if (! gpio_get(SWITCH_PIN)) {
-			sw_cnt++;
+			if (! pressed) {
+				pressed = true;
+				press_time = time_us_64();
+			}
 		} else {
-			if (sw_cnt > 3) {
-				computer_switch(255, true);
-				sw_cnt = 0;
+			if (pressed) {
+				pressed = false;
+				button_apply(time_us_64() - press_time);
 			}
 		}
 	}

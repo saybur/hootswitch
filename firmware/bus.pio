@@ -1,18 +1,9 @@
 ;
-; Copyright (C) 2024 saybur
+; Copyright (C) 2024-2026 saybur
 ;
-; This program is free software: you can redistribute it and/or modify
-; it under the terms of the GNU General Public License as published by
-; the Free Software Foundation, either version 3 of the License, or
-; (at your option) any later version.
-;
-; This program is distributed in the hope that it will be useful,
-; but WITHOUT ANY WARRANTY; without even the implied warranty of
-; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-; GNU General Public License for more details.
-;
-; You should have received a copy of the GNU General Public License
-; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+; This Source Code Form is subject to the terms of the Mozilla Public License,
+; v. 2.0. If a copy of the MPL was not distributed with this file, You can
+; obtain one at https://mozilla.org/MPL/2.0/.
 ;
 
 ;
@@ -29,7 +20,7 @@
 ; inefficient, badly documented, or just plain wrong please open a PR :)
 ;
 ; ----------------------------------------------------------------------------
-; For simplicity these functions are all hard-coded to use a 125MHz main clock.
+; For simplicity these functions are all hard-coded to use a 200MHz main clock.
 ; Do not change the system clock without updating the clock dividers!
 ; ----------------------------------------------------------------------------
 
@@ -123,7 +114,7 @@ static inline void bus_tx_host_pio_config(pio_sm_config *c,
 	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
 	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
-	sm_config_set_clkdiv_int_frac(c, 630, 0); // 5.04us/clk
+	sm_config_set_clkdiv_int_frac(c, 1008, 0); // 5.04us/clk
 }
 
 static inline void bus_tx_host_put(PIO pio, uint8_t sm, uint8_t v)
@@ -196,7 +187,7 @@ static inline void bus_rx_host_pio_config(pio_sm_config *c,
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_in_shift(c, false, true, 8); // shift left
 	sm_config_set_out_shift(c, true, true, 8); // shift right
-	sm_config_set_clkdiv_int_frac(c, 50, 0); // 0.4us/clk
+	sm_config_set_clkdiv_int_frac(c, 80, 0); // 0.4us/clk
 }
 %}
 
@@ -216,7 +207,7 @@ static inline void bus_reset_pio_config(pio_sm_config *c,
 {
 	*c = bus_reset_program_get_default_config(offset);
 	sm_config_set_sideset_pins(c, pin_write);
-	sm_config_set_clkdiv_int_frac(c, 12500, 0); // 100us/clk
+	sm_config_set_clkdiv_int_frac(c, 20000, 0); // 100us/clk
 }
 
 %}
@@ -287,7 +278,7 @@ static inline void bus_tx_dev_pio_config(pio_sm_config *c,
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_out_shift(c, false, true, 8); // shift left (see below)
 	sm_config_set_fifo_join(c, PIO_FIFO_JOIN_TX);
-	sm_config_set_clkdiv_int_frac(c, 625, 0); // 5us/clk
+	sm_config_set_clkdiv_int_frac(c, 1000, 0); // 5us/clk
 }
 
 static inline void bus_tx_dev_put(PIO pio, uint8_t sm, uint8_t v)
@@ -374,7 +365,7 @@ static inline void bus_rx_dev_pio_config(pio_sm_config *c,
 	sm_config_set_sideset_pins(c, pin_write);
 	sm_config_set_in_shift(c, false, true, 8); // shift left
 	sm_config_set_out_shift(c, true, true, 8); // shift right
-	sm_config_set_clkdiv_int_frac(c, 375, 0); // 3us/clk
+	sm_config_set_clkdiv_int_frac(c, 600, 0); // 3us/clk
 }
 
 static inline uint8_t bus_rx_dev_get(PIO pio, uint8_t sm)
@@ -415,6 +406,6 @@ static inline void bus_atn_dev_pio_config(pio_sm_config *c,
 	sm_config_set_jmp_pin(c, pin_read);
 	sm_config_set_in_pins(c, pin_read);
 	sm_config_set_out_shift(c, true, true, 32); // shift right
-	sm_config_set_clkdiv_int_frac(c, 125, 0); // 1us/clk
+	sm_config_set_clkdiv_int_frac(c, 200, 0); // 1us/clk
 }
 %}

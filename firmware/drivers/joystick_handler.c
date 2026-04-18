@@ -1,18 +1,9 @@
 /*
  * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <string.h>
@@ -147,10 +138,10 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 					| ((uint32_t) (data[0] << 16))
 					| ((uint32_t) (data[1] << 8))
 					| ((uint32_t) data[2]);
-			jdata.x1 = ((int16_t) data[3]) - 0x80;
-			jdata.y1 = ((int16_t) data[4]) - 0x80;
-			jdata.y2 = ((int16_t) data[5]) - 0x80;
-			jdata.x2 = ((int16_t) data[6]) - 0x80;
+			jdata.x = ((int16_t) data[3]) - 0x80;
+			jdata.y = ((int16_t) data[4]) - 0x80;
+			jdata.throttle = data[5];
+			jdata.brake = data[6];
 			break;
 
 		case MODE_MOUSESTICK:
@@ -159,8 +150,8 @@ static void hndl_talk(uint8_t hdev, host_err err, uint32_t cid, uint8_t reg,
 				dbg_err("gjoy: r0 len != 3, %d", data_len);
 				return;
 			}
-			jdata.x1 = ((int16_t) data[0]) - 0x80;
-			jdata.y1 = ((int16_t) data[1]) - 0x80;
+			jdata.x = ((int16_t) data[0]) - 0x80;
+			jdata.y = ((int16_t) data[1]) - 0x80;
 			jdata.buttons = 0xFFFFFF00L
 					| ((uint32_t) data[3]);
 			break;

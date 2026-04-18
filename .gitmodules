@@ -1,0 +1,9 @@
+[submodule "external/pico-sdk"]
+	path = external/pico-sdk
+	url = https://github.com/raspberrypi/pico-sdk.git
+[submodule "external/FreeRTOS-Kernel"]
+	path = external/FreeRTOS-Kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel
+[submodule "external/bluepad32"]
+	path = external/bluepad32
+	url = https://github.com/ricardoquesada/bluepad32.git

@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #ifndef __COMPUTER_H__
@@ -76,6 +67,20 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
  */
 bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep);
+
+/**
+ * Indicates whether data is waiting in this register to be sent. This is a
+ * non-atomic check and may be out of date as soon as it returns. It may still
+ * be useful for certain fast-polling devices that operate at a large margin
+ * of the ADB bus speed to keep them from overloading the system.
+ *
+ * @param computer  the computer index to check.
+ * @param drv_idx   the index that your driver/device assignment was originally
+ *                  given during registration.
+ * @param reg       the Talk register to check, from 0-2.
+ * @return          true if data is waiting, false if not.
+ */
+bool computer_data_waiting(uint8_t comp, uint8_t drv_idx, uint8_t reg);
 
 /**
  * Reports if one or more computers have experienced a reset pulse. Used to

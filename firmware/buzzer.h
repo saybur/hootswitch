@@ -1,27 +1,13 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #ifndef __BUZZER_H__
 #define __BUZZER_H__
-
-/**
- * Shorthand for calling buzzer_play(), using a system default alert noise.
- */
-void buzzer_chirp(void);
 
 /**
  * Enables or disables the buzzer component.
@@ -31,16 +17,16 @@ void buzzer_chirp(void);
 void buzzer_enable(bool enabled);
 
 /**
- * Simple square wave PWM audio on the buzzer.
+ * Simple square wave PWM audio on the buzzer. This continues to play until
+ * stopped by zeroing the volume.
  *
  * Don't expect much out of this, the code was thrown together quickly. It does
  * OK for making chirps, but improvements here are welcome.
  *
  * @param freq         approximate playback frequency.
- * @param duration_ms  approximate time to play, in milliseconds.
- * @param vol          duty cycle from 0 (0%) to 255 (50%).
+ * @param vol          rough volume step from 0 (0%) to 7 (50%).
  */
-void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol);
+void buzzer_play(uint16_t freq, uint8_t vol);
 
 /**
  * Sets up the buzzer. Called during init, do not invoke as a user.

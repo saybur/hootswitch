@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #ifndef __KEYBOARD_H__
@@ -28,8 +19,9 @@ typedef struct {
  *
  * @param id  the ID to use from the original registration call.
  * @param m   the message to enqueue.
+ * @return    true if the message was enqueued, false otherwise.
  */
-void keyboard_enqueue(uint8_t id, keyboard_message *m);
+bool keyboard_enqueue(uint8_t id, keyboard_message *m);
 
 /**
  * Registers a computer-facing keyboard and assigns it for exclusive use to
@@ -43,5 +35,16 @@ void keyboard_enqueue(uint8_t id, keyboard_message *m);
  * @return               true if registration was successful, false otherwise.
  */
 bool keyboard_register(uint8_t *id, void (*reg2_callback)(uint8_t, uint16_t));
+
+/**
+ * Send a sequence of key up or down events. These are sent to the computer
+ * only if the internal tracker shows the keys are not already up and/or down.
+ *
+ * @param id   the ID to use from the original registration call.
+ * @param *c   an array of keycodes to send; low 7 bits are the character, high
+ *             bit is set if key is going up.
+ * @param len  length of the given array.
+ */
+void keyboard_sequence(uint8_t id, uint8_t *c, uint8_t len);
 
 #endif /* __KEYBOARD_H__ */

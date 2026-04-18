@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include <stdint.h>
@@ -20,61 +11,54 @@
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
-#include "hardware/irq.h"
 #include "hardware/pwm.h"
-#include "hardware/sync.h"
-#include "hardware/timer.h"
 
 #include "buzzer.h"
 #include "hardware.h"
 
-#define FREQ_MIN        400
+#define FREQ_MIN        50
 #define FREQ_MAX        8000
-#define PWM_LENGTH      512
-
-#define CHIRP_FREQ      3200
-#define CHIRP_DURATION  100
-#define CHIRP_VOLUME    64
+#define PWM_DIV         16
 
 static volatile bool buzzer_enabled = true;
 static uint8_t slice;
 static uint8_t chan;
-
-static void buzzer_callback(void)
-{
-	pwm_set_chan_level(slice, chan, 0);
-	timer_hw->intr = 1U << BUZZER_TIMER;
-}
-
-void buzzer_chirp(void)
-{
-	buzzer_play(CHIRP_FREQ, CHIRP_DURATION, CHIRP_VOLUME);
-}
 
 void buzzer_enable(bool enabled)
 {
 	buzzer_enabled = enabled;
 }
 
-void buzzer_play(uint16_t freq, uint16_t duration_ms, uint8_t vol)
+void buzzer_play(uint16_t freq, uint8_t vol)
 {
-	if (duration_ms == 0) return;
-	if (freq < 50) freq = FREQ_MIN;
-	if (freq > FREQ_MAX) freq = FREQ_MAX;
+	if (vol == 0) {
+		// stop any ongoing playback
+		pwm_set_chan_level(slice, chan, 0);
+		pwm_set_wrap(slice, 1);
+		return;
+	}
 
-	float div = clock_get_hz(clk_sys) / (float) (freq * PWM_LENGTH);
+	if (freq < FREQ_MIN) freq = FREQ_MIN;
+	if (freq > FREQ_MAX) freq = FREQ_MAX;
+	if (vol > 7) vol = 7;
+
+	/*
+	 * Rewriting the formula from datasheet 4.5.2.6 should yield this:
+	 *
+	 * top = fclk / ((CSR_PH_CORRECT + 1) * fPWM * DIV_INT)
+	 *
+	 * Do wish I'd paid more attention in algebra instead of messing around on
+	 * my graphing calculator :(
+	 */
+	uint16_t top = clock_get_hz(clk_sys) / (2 * PWM_DIV * freq);
+
 #ifndef BUZZER_DISABLE
 	// even if disabled go through most of the motions to keep timing similar
 	if (buzzer_enabled) {
-		pwm_set_clkdiv(slice, div);
-		pwm_set_chan_level(slice, chan, vol);
+		pwm_set_wrap(slice, top);
+		pwm_set_chan_level(slice, chan, top >> (8 - vol));
 	}
 #endif
-
-	uint32_t isr = save_and_disable_interrupts();
-	uint32_t future = time_us_32() + duration_ms * 1000;
-	timer_hw->alarm[BUZZER_TIMER] = future;
-	restore_interrupts(isr);
 }
 
 void buzzer_init(void)
@@ -84,12 +68,8 @@ void buzzer_init(void)
 	chan = pwm_gpio_to_channel(BUZZER_PIN);
 
 	pwm_set_chan_level(slice, chan, 0);
-	pwm_set_clkdiv_int_frac(slice, 125, 0);
-	pwm_set_wrap(slice, PWM_LENGTH - 1);
+	pwm_set_phase_correct(slice, true);
+	pwm_set_clkdiv_int_frac(slice, PWM_DIV, 0);
+	pwm_set_wrap(slice, 1);
 	pwm_set_enabled(slice, true);
-
-	hardware_alarm_claim(BUZZER_TIMER);
-	irq_set_exclusive_handler(BUZZER_TIMER_IRQ, buzzer_callback);
-	hw_set_bits(&timer_hw->inte, 1U << BUZZER_TIMER);
-	irq_set_enabled(BUZZER_TIMER_IRQ, true);
 }

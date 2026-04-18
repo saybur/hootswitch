@@ -1,18 +1,9 @@
 /*
- * Copyright (C) 2024 saybur
+ * Copyright (C) 2024-2026 saybur
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 #include "util.h"
@@ -86,18 +77,10 @@ uint8_t util_mouse_decode(uint8_t* data, uint8_t data_len,
 	return 0;
 }
 
-void util_mouse_encode(uint8_t* data, uint8_t rshift,
-		int32_t x, int32_t y, uint8_t buttons)
+void util_mouse_encode(uint8_t* data, int16_t x, int16_t y, uint8_t buttons)
 {
-	uint32_t ix = x;
-	uint32_t iy = y;
-
-	if (rshift > 16) rshift = 16;
-	if (rshift > 0)
-	{
-		ix >>= rshift;
-		iy >>= rshift;
-	}
+	uint16_t ix = x;
+	uint16_t iy = y;
 
 	data[0] = iy & 0x7F;
 	data[1] = ix & 0x7F;
