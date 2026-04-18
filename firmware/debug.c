@@ -77,6 +77,18 @@ void dbg_trace(const char *format, ...)
 	dbg_printf("[%8d] t: %s", time, buf);
 }
 
+void dbg_data(const char *format, ...)
+{
+	char buf[DEBUG_MESSAGE_LENGTH_MAX - 11];
+
+	va_list args;
+	va_start(args, format);
+	vsnprintf(buf, sizeof buf, format, args);
+	va_end(args);
+
+	dbg_printf("[    DATA] %s", buf);
+}
+
 void dbg_trace_enable(bool state)
 {
 	trace_on = state;

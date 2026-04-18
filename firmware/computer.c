@@ -987,6 +987,7 @@ static void computer_switch_to(uint8_t target)
 	if (beep) {
 		notify_user(NOTIFY_COMPUTER_SWITCH);
 	}
+	dbg_data("comp:%d", active_computer);
 	dbg("sw ok!");
 }
 

@@ -12,9 +12,12 @@
  * ----------------------------------------------------------------------------
  */
 
+const maxLogLength = 65536;
+
 let port = undefined;
 let reader = undefined;
 let writer = undefined;
+let line = "";
 let log = "";
 
 const connectButton = document.getElementById("connect-button");
@@ -66,9 +69,19 @@ async function connect()
 			if (done) {
 				break;
 			}
-			log += decoder.decode(value);
-			textLog.innerHTML = log;
-			textLog.scrollTop = textLog.scrollHeight;
+			// convert chunks to lines prior to sending to terminal
+			let chunk = decoder.decode(value);
+			for (let i = 0; i < chunk.length; i++) {
+				let c = chunk.charAt(i);
+				if (c == '\n') {
+					readData(line);
+					line = "";
+				} else if (c == '\r') {
+					// ignore
+				} else {
+					line += c;
+				}
+			}
 		}
 	} catch (err) {
 		console.log(err);
@@ -120,6 +133,25 @@ function writeData(data)
 	}
 	arr[apos++] = 0xC0;
 	writer.write(arr);
+}
+
+function readData(data)
+{
+	if (data.startsWith("[    DATA]")) {
+		let token = data.substring(11);
+		console.log(`DATA: "${token}"`);
+		// TODO implement
+	} else {
+		// append to log item; if line becomes excessively long trucate
+		let newLength = log.length + data.length + 1;
+		if (log.length + data.length > maxLogLength) {
+			log = log.substring(newLength - maxLogLength) + data + '\n';
+		} else {
+			log += data + '\n';
+		}
+		textLog.innerHTML = log;
+		textLog.scrollTop = textLog.scrollHeight;
+	}
 }
 
 async function disconnect()
