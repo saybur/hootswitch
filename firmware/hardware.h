@@ -51,6 +51,13 @@
 #define C4_PSW_PIN          8
 
 /*
+ * First revision hardware has green LEDs that are quite eye-piercing. To tone
+ * it down this value is used by LED setting code to tweak the PWM level (from
+ * 0-255) of those elements.
+ */
+#define LED_MACHINE_LEVEL   70
+
+/*
  * ----------------------------------------------------------------------------
  *     RESOURCE DEFINITIONS / ALIASES
  *   Use care changing anything past this line!

@@ -6,9 +6,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#include "pico/stdlib.h"
-#include "hardware/gpio.h"
-#include "hardware/pwm.h"
+#include <stdbool.h>
+#include <pico/stdlib.h>
+#include <hardware/gpio.h>
+#include <hardware/pwm.h>
 
 #include "hardware.h"
 #include "led.h"
@@ -19,13 +20,33 @@ typedef struct {
 	uint8_t gpio;
 	uint8_t slice;
 	uint8_t chan;
+	volatile uint8_t level;
 } led_c;
 static led_c leds[LED_C_COUNT];
 
 void led_machine(uint8_t mach, uint8_t level)
 {
 	if (mach >= LED_C_COUNT) return;
+	leds[mach].level = level;
 	pwm_set_chan_level(leds[mach].slice, leds[mach].chan, level);
+}
+
+void led_machine_overlay(uint8_t mask, uint8_t level)
+{
+	for (uint8_t i = 0; i < LED_C_COUNT; i++) {
+		if (mask & (1U << i)) {
+			pwm_set_chan_level(leds[i].slice, leds[i].chan, level);
+		}
+	}
+}
+
+void led_machine_reset(void)
+{
+	for (uint8_t i = 0; i < LED_C_COUNT; i++) {
+		pwm_set_chan_level(leds[i].slice,
+				leds[i].chan,
+				leds[i].level);
+	}
 }
 
 void led_init(void)

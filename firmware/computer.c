@@ -47,9 +47,6 @@
 #define TIME_RESET_THRESH       400
 #define RX_MAX_BITS             64
 
-#define LED_ACTIVE              70
-#define LED_DETECT              40
-
 typedef enum {
 	PHASE_IDLE,
 	PHASE_ATTENTION,
@@ -969,7 +966,7 @@ static void computer_switch_to(uint8_t target)
 	// update LEDs to match
 	for (uint8_t i = 0; i < COMPUTER_COUNT; i++) {
 		if (next == i) {
-			led_machine(i, LED_ACTIVE);
+			led_machine(i, LED_MACHINE_LEVEL);
 		} else {
 			led_machine(i, 0);
 		}

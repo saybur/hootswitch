@@ -66,9 +66,10 @@ Switching between systems works via the button on the front or
 <kbd>Control</kbd> / <kbd>Option</kbd> / <kbd>⌘</kbd> / <kbd>Shift</kbd> in
 sequence, followed by <kbd>1</kbd> - <kbd>4</kbd> to choose a port.
 
-To pair a Bluetooth device, put it in pairing mode, press and hold the
-Hootswitch button for at least three seconds, then let go. The Pico W LED will
-flash while in pairing mode.
+To pair a Bluetooth device, put it into pairing mode. Once done, press and hold
+the Hootswitch button for at least three seconds, then let go. The Pico W LED
+will flash while in pairing mode. More LEDs will light up and the buzzer will
+play a tone as the device connects.
 
 Hootswitch logs its status over the USB connection, which may help diagnose
 issues with device pairing (or other problems). To view the log, use your

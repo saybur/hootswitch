@@ -52,6 +52,26 @@ static inline void led_error_off(void)
 void led_machine(uint8_t mach, uint8_t level);
 
 /**
+ * Sets one or more machine indicator LEDs to a chosen intensity levels on a
+ * temporary basis, until led_machine_reset() is invoked. Only LEDs matching
+ * the bitmask provided will be changed.
+ *
+ * User code should not use this function, it is intended for use through the
+ * notification system.
+ *
+ * @param mask   bits to apply the overlay to, LSB for the first LED.
+ * @param level  brightness level, from 0 (off) to 255 (max intensity).
+ */
+void led_machine_overlay(uint8_t mask, uint8_t level);
+
+/**
+ * Resets the machine indicator LEDs to their previous non-overlay state (see
+ * above for details). User code should not invoke this function, it is
+ * intended for use through the notification system.
+ */
+void led_machine_reset(void);
+
+/**
  * Sets up the LEDs. Called during init, do not invoke as a user.
  */
 void led_init(void);

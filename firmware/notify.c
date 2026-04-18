@@ -57,20 +57,26 @@ void notify_do_computer_switch(void)
 void notify_connect(void)
 {
 	const TickType_t delay = CONNECT_DURATION / portTICK_PERIOD_MS;
+	led_machine_overlay(0xF, 0); // all off
 	buzzer_play(FREQ_CONN_LOW, CONNECT_VOLUME);
 	vTaskDelay(delay);
+	led_machine_overlay(0xF, LED_MACHINE_LEVEL); // all on
 	buzzer_play(FREQ_CONN_HIGH, CONNECT_VOLUME);
 	vTaskDelay(delay);
+	led_machine_reset(); // restore
 	buzzer_play(0, 0);
 }
 
 void notify_disconnect(void)
 {
 	const TickType_t delay = CONNECT_DURATION / portTICK_PERIOD_MS;
+	led_machine_overlay(0xF, LED_MACHINE_LEVEL); // all on
 	buzzer_play(FREQ_CONN_HIGH, CONNECT_VOLUME);
 	vTaskDelay(delay);
+	led_machine_overlay(0xF, 0); // all off
 	buzzer_play(FREQ_CONN_LOW, CONNECT_VOLUME);
 	vTaskDelay(delay);
+	led_machine_reset(); // restore
 	buzzer_play(0, 0);
 }
 
