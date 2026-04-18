@@ -25,68 +25,43 @@
 #include "virtual.h"
 
 /*
- * Driver for sending UART keystrokes via the standard mouse protocol.
- *
- * Bytes >= 0x80 are commands, < 0x80 are data. Commands must be followed by 0
- * to 1 data bytes, which are committed upon receipt. Commands requiring data
- * to follow are aborted if a new command is sent. See serial.h for the command
- * list.
- */
-
-static uint8_t command;
-static uint8_t mse_cache[2] = { 0x80, 0x80 };
-
-/*
  * ----------------------------------------------------------------------------
  * --- Serial Listener from Host Computer -------------------------------------
  * ----------------------------------------------------------------------------
  */
 
-static void serial_kbd_send(bool up, uint8_t c)
+static void serial_kbd_send(uint8_t *data, uint8_t length)
 {
-	virtual_keyboard_offer(up, c);
+	for (uint8_t i = 1; i < length; i++) {
+		virtual_keyboard_offer(data[i] & 0x80, data[i] & 0x7F);
+	}
 }
 
-static void serial_mse_send()
+static void serial_mse_send(uint8_t *data, uint8_t length)
 {
-	virtual_mouse_data data;
-	util_mouse_decode(mse_cache, 2, &(data.x), &(data.y), &(data.buttons));
-	virtual_mouse_offer(&data);
+	if (length < 6) return;
+
+	virtual_mouse_data mse;
+	mse.buttons = data[1];
+	mse.x = (data[2] << 8) + data[3];
+	mse.y = (data[4] << 8) + data[5];
+	virtual_mouse_offer(&mse);
 }
 
-void serial_enqueue(uint8_t c) {
-	if (c >= 0x80) {
-		command = c;
-		switch (command) {
-		case SER_CMD_MSE_DOWN:
-			mse_cache[0] &= ~0x80;
-			serial_mse_send();
-			break;
-		case SER_CMD_MSE_UP:
-			mse_cache[0] |= 0x80;
-			serial_mse_send();
-			break;
-		case SER_CMD_MSE_APPLY:
-			serial_mse_send();
-			break;
-		}
-	} else {
-		switch (command) {
-		case SER_CMD_MSE_X:
-			mse_cache[1] = (mse_cache[1] & 0x80) | c;
-			break;
-		case SER_CMD_MSE_Y:
-			mse_cache[0] = (mse_cache[0] & 0x80) | c;
-			break;
-		case SER_CMD_KBD_DOWN:
-			serial_kbd_send(false, c);
-			break;
-		case SER_CMD_KBD_UP:
-			serial_kbd_send(true, c);
-			break;
+void serial_enqueue(uint8_t *data, uint8_t length) {
+	if (!data || length < 1) return;
+
+	switch (data[0]) {
 		case SER_CMD_SWITCH:
-			computer_switch(c, true);
+			if (length >= 2) {
+				computer_switch(data[1], true);
+			}
 			break;
-		}
+		case SER_CMD_KBD:
+			serial_kbd_send(data, length);
+			break;
+		case SER_CMD_MSE:
+			serial_mse_send(data, length);
+			break;
 	}
 }

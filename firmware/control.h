@@ -9,6 +9,23 @@
 #ifndef __CONTROL_H__
 #define __CONTROL_H__
 
+/*
+ * Defines a control system that can be used to remotely operate a device. The
+ * interface operates using control frames, with each frame containing one
+ * command byte followed by zero or more data bytes. Over USB CDC these are
+ * encapsulated using SLIP:
+ *
+ * <https://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol>
+ *
+ * Commands below CONTROL_CODE_SEGMENT are deferred to the serial interface.
+ * The remaining commands are defined below.
+ *
+ * The SLIP encapsulation is for writing to the device only. Reading from it
+ * uses the logging system and ASCII.
+ */
+
+#define CONTROL_CODE_SEGMENT          0x80
+
 #define CONTROL_BT_SCAN               0xE0
 #define CONTROL_DBG_TRACE             0xE8
 #define CONTROL_DBG_HEAP              0xEA
@@ -22,11 +39,6 @@ typedef enum {
 	RESET_TYPE_DEBUG
 } control_reset_type;
 
-typedef enum {
-	CONTROL_MODE_IDLE = 0,
-	CONTROL_MODE_FLYBYWIRE
-} control_mode_type;
-
 /**
  * Indicates if there was a special reset condition that should change the
  * device startup mode.
@@ -34,12 +46,6 @@ typedef enum {
  * @return any special device startup flag, 0 if none is present.
  */
 control_reset_type control_check_reset(void);
-
-/**
- * Indicates to the control system that system startup is complete and it may
- * begin performing non-core functions.
- */
-void control_start(void);
 
 /**
  * Task responsible for the serial control interface. Users should not call

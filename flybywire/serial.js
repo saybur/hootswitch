@@ -91,6 +91,37 @@ async function connect()
 	}
 }
 
+/**
+ * Handles both SLIP byte-stuffing needed to transmit a frame and the write()
+ * call; use this instead of direct calls to the writer.
+ */
+function writeData(data)
+{
+	let stuffedLength = data.length + 1;
+	for (let i = 0; i < data.length; i++) {
+		if (data[i] == 0xC0) {
+			stuffedLength++;
+		} else if (data[i] == 0xDB) {
+			stuffedLength++;
+		}
+	}
+	let arr = new Uint8Array(stuffedLength);
+	let apos = 0;
+	for (let i = 0; i < data.length; i++) {
+		if (data[i] == 0xC0) {
+			arr[apos++] = 0xDB;
+			arr[apos++] = 0xDC;
+		} else if (data[i] == 0xDB) {
+			arr[apos++] = 0xDB;
+			arr[apos++] = 0xDD;
+		} else {
+			arr[apos++] = data[i];
+		}
+	}
+	arr[apos++] = 0xC0;
+	writer.write(arr);
+}
+
 async function disconnect()
 {
 	if (! port) {
@@ -111,7 +142,7 @@ function restartDebug()
 	if (window.confirm("Do you want to perform a restart to debug? (See the wiki for details)")) {
 		console.log("debug restart requested");
 		const a = new Uint8Array([0xF2]);
-		writer.write(a);
+		writeData(a);
 	}
 }
 

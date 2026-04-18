@@ -31,7 +31,10 @@
 #define CONTROL_WDRST_DEBUG    0xA5A5A5A5
 #define CONTROL_BUFFER_SIZE    64
 
-static volatile control_mode_type mode = CONTROL_MODE_IDLE;
+#define CONTROL_CHAR_END       0xC0
+#define CONTROL_CHAR_ESC       0xDB
+#define CONTROL_CHAR_ESC_END   0xDC
+#define CONTROL_CHAR_ESC_ESC   0xDD
 
 static void control_reboot(bool debug)
 {
@@ -45,11 +48,56 @@ static void control_reboot(bool debug)
 	while(1);
 }
 
+control_reset_type control_check_reset(void)
+{
+	// retrieve and clear any special flags
+	uint32_t w = watchdog_hw->scratch[WATCHDOG_SCRATCH_REG];
+	watchdog_hw->scratch[WATCHDOG_SCRATCH_REG] = 0;
+
+	// if the watchdog was responsible for the reset,
+	// check if it was a special condition we need to report
+	if (watchdog_enable_caused_reboot()) {
+		switch (w) {
+			case CONTROL_WDRST_DEBUG:
+				return RESET_TYPE_DEBUG;
+		}
+	}
+
+	// fallback to normal
+	return RESET_TYPE_NORMAL;
+}
+
+/*
+ * ----------------------------------------------------------------------------
+ *   SLIP Decoding
+ * ----------------------------------------------------------------------------
+ *
+ * This is stateful, ensure it only gets called from the control task.
+ */
+
+static uint8_t control_buffer[CONTROL_BUFFER_SIZE];
+static uint8_t control_buffer_length;
+
 static void control_enqueue(unsigned char c)
 {
-	if (c >= 0xE0) {
-		switch (c) {
-			case SER_CMD_BTSCAN:
+	if (control_buffer_length < CONTROL_BUFFER_SIZE) {
+		control_buffer[control_buffer_length++] = c;
+	} else {
+		dbg_err("control overflow!");
+	}
+}
+
+static void control_commit(void)
+{
+	/*
+	 * Don't consider no-op ends to be an error, serial interface may do this
+	 * to reset the session.
+	 */
+	if (control_buffer_length < 1) return;
+
+	if (control_buffer[0] >= CONTROL_CODE_SEGMENT) {
+		switch (control_buffer[0]) {
+			case CONTROL_BT_SCAN:
 #ifdef HOOTSWITCH_WIRELESS
 				bt_scan();
 #endif
@@ -73,33 +121,45 @@ static void control_enqueue(unsigned char c)
 				control_reboot(true);
 				break;
 		}
-	} else if (mode == CONTROL_MODE_FLYBYWIRE) {
-		serial_enqueue(c);
+	} else {
+		serial_enqueue(control_buffer, control_buffer_length);
 	}
+
+	control_buffer_length = 0;
 }
 
-control_reset_type control_check_reset(void)
+static void control_process(unsigned char c)
 {
-	// retrieve and clear any special flags
-	uint32_t w = watchdog_hw->scratch[WATCHDOG_SCRATCH_REG];
-	watchdog_hw->scratch[WATCHDOG_SCRATCH_REG] = 0;
+	static bool escaped = false;
 
-	// if the watchdog was responsible for the reset,
-	// check if it was a special condition we need to report
-	if (watchdog_enable_caused_reboot()) {
-		switch (w) {
-			case CONTROL_WDRST_DEBUG:
-				return RESET_TYPE_DEBUG;
+	if (escaped) {
+		escaped = false;
+		switch (c) {
+			case CONTROL_CHAR_END:
+				// technically error, ignore to allow for reset
+				control_commit();
+				break;
+			case CONTROL_CHAR_ESC_END:
+				control_enqueue(CONTROL_CHAR_END);
+				break;
+			case CONTROL_CHAR_ESC_ESC:
+				control_enqueue(CONTROL_CHAR_ESC);
+				break;
+			default:
+				dbg_err("control bad esc %02X", c);
+		}
+	} else {
+		switch (c) {
+			case CONTROL_CHAR_END:
+				control_commit();
+				break;
+			case CONTROL_CHAR_ESC:
+				escaped = true;
+				break;
+			default:
+				control_enqueue(c);
 		}
 	}
-
-	// fallback to normal
-	return RESET_TYPE_NORMAL;
-}
-
-void control_start(void)
-{
-	mode = CONTROL_MODE_FLYBYWIRE;
 }
 
 /*
@@ -137,7 +197,7 @@ void control_task(__unused void *parameters)
 		uint16_t data_read = xStreamBufferReceive(
 				stream, data, CONTROL_BUFFER_SIZE, portMAX_DELAY);
 		for (uint16_t i = 0; i < data_read; i++) {
-			control_enqueue(data[i]);
+			control_process(data[i]);
 		}
 	}
 }

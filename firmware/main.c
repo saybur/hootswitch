@@ -128,7 +128,6 @@ static void init_task(__unused void *parameters)
 
 	driver_init();
 	computer_start();
-	control_start();
 
 	xTaskCreate(computer_task, "computer", DEFAULT_STACK,
 			NULL, DISPATCH_PRIORITY, NULL);

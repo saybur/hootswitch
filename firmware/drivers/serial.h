@@ -9,20 +9,10 @@
 #ifndef __SERIAL_H__
 #define __SERIAL_H__
 
-#define SER_CMD_MSE_DOWN      0x80
-#define SER_CMD_MSE_UP        0x81
-#define SER_CMD_MSE_X         0x82
-#define SER_CMD_MSE_Y         0x83
-#define SER_CMD_MSE_APPLY     0x84
-#define SER_CMD_SWITCH        0x85
-#define SER_CMD_KBD_DOWN      0x86
-#define SER_CMD_KBD_UP        0x87
-#define SER_CMD_BTSCAN        0x88
-#define SER_CMD_TRACE         0x89
-#define SER_CMD_DBG_HEAP      0x8A
-#define SER_CMD_DBG_LIST      0x8B
-#define SER_CMD_DBG_STATS     0x8C
+#define SER_CMD_SWITCH        0x01
+#define SER_CMD_KBD           0x02
+#define SER_CMD_MSE           0x03
 
-void serial_enqueue(uint8_t);
+void serial_enqueue(uint8_t *data, uint8_t length);
 
 #endif /* __SERIAL_H__ */
