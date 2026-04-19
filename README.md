@@ -69,7 +69,8 @@ sequence, followed by <kbd>1</kbd> - <kbd>4</kbd> to choose a port.
 To pair a Bluetooth device, put it into pairing mode. Once done, press and hold
 the Hootswitch button for at least three seconds, then let go. The Pico W LED
 will flash while in pairing mode. More LEDs will light up and the buzzer will
-play a tone as the device connects.
+play a tone as the device connects. Hold down the button for more than ten
+seconds to remove all paired devices from memory.
 
 Hootswitch logs its status over the USB connection, which may help diagnose
 issues with device pairing (or other problems). To view the log, use your

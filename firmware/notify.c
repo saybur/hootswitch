@@ -31,7 +31,7 @@
 
 static QueueHandle_t notifications;
 
-void notify_do_error_flash(uint8_t count)
+static void notify_do_error_flash(uint8_t count)
 {
 	const TickType_t delay = CHIRP_DURATION / portTICK_PERIOD_MS;
 	uint8_t i = count;
@@ -47,14 +47,14 @@ void notify_do_error_flash(uint8_t count)
 	led_error_off();
 }
 
-void notify_do_computer_switch(void)
+static void notify_do_computer_switch(void)
 {
 	buzzer_play(FREQ_GENERIC, CHIRP_VOLUME);
 	vTaskDelay(CHIRP_DURATION / portTICK_PERIOD_MS);
 	buzzer_play(0, 0);
 }
 
-void notify_connect(void)
+static void notify_connect(void)
 {
 	const TickType_t delay = CONNECT_DURATION / portTICK_PERIOD_MS;
 	led_machine_overlay(0xF, 0); // all off
@@ -67,7 +67,7 @@ void notify_connect(void)
 	buzzer_play(0, 0);
 }
 
-void notify_disconnect(void)
+static void notify_disconnect(void)
 {
 	const TickType_t delay = CONNECT_DURATION / portTICK_PERIOD_MS;
 	led_machine_overlay(0xF, LED_MACHINE_LEVEL); // all on
@@ -78,6 +78,23 @@ void notify_disconnect(void)
 	vTaskDelay(delay);
 	led_machine_reset(); // restore
 	buzzer_play(0, 0);
+}
+
+static void notify_keys_delete(void)
+{
+	const TickType_t delay = CONNECT_DURATION / portTICK_PERIOD_MS;
+
+	for (int i = 0; i < 3; i++) {
+		buzzer_play(FREQ_CONN_LOW, CONNECT_VOLUME);
+		led_machine_overlay(0xF, LED_MACHINE_LEVEL);
+		vTaskDelay(delay);
+		buzzer_play(0, 0);
+		if (i < 2) {
+			led_machine_overlay(0x0, LED_MACHINE_LEVEL);
+			vTaskDelay(delay);
+		}
+	}
+	led_machine_reset();
 }
 
 bool notify_user(notify_type type)
@@ -113,6 +130,9 @@ void notify_task(__unused void *parameters)
 					break;
 				case NOTIFY_DEVICE_DISCONNECT:
 					notify_disconnect();
+					break;
+				case NOTIFY_DELETE_BT_KEYS:
+					notify_keys_delete();
 					break;
 				default:
 					dbg_err("unknown notification %d", type);

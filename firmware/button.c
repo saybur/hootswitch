@@ -18,18 +18,29 @@
 #include "button.h"
 #include "computer.h"
 #include "hardware.h"
+#include "notify.h"
 
 #ifdef HOOTSWITCH_WIRELESS
+#include <uni.h>
 #include "btscan.h"
 #endif
 
 #define SAMPLE_RATE_IN_MS 20
 
-#define HOLD_TIME_SCAN   3000000L   // 3s
-#define HOLD_TIME_SWITCH 50000L     // 50ms
+#define HOLD_TIME_DELETE_KEYS  10000000L  // 10s
+#define HOLD_TIME_SCAN         3000000L   // 3s
+#define HOLD_TIME_SWITCH       50000L     // 50ms
 
 static void button_apply(uint64_t duration)
 {
+	if (duration > HOLD_TIME_DELETE_KEYS) {
+#ifdef HOOTSWITCH_WIRELESS
+		uni_bt_del_keys_safe();
+		notify_user(NOTIFY_DELETE_BT_KEYS);
+#else
+		computer_switch(255, true);
+#endif
+	}
 	if (duration > HOLD_TIME_SCAN) {
 #ifdef HOOTSWITCH_WIRELESS
 		bt_scan();
