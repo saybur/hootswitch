@@ -782,6 +782,23 @@ bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 	}
 }
 
+bool computer_data_set_isr(uint8_t comp, uint8_t drv_idx, uint8_t reg,
+		uint8_t *data, uint8_t data_len, bool keep)
+{
+	if (comp >= COMPUTER_COUNT) return false;
+	if (drv_idx >= computers[comp].device_count) return false;
+	if (reg > 2) return false;
+
+	comp_device *dev = &computers[comp].devices[drv_idx];
+	if (sem_try_acquire(&dev->sem)) {
+		computer_data_set_talk(comp, dev, reg, data, data_len, keep);
+		sem_release(&dev->sem);
+		return true;
+	} else {
+		return false;
+	}
+}
+
 bool computer_data_waiting(uint8_t comp, uint8_t drv_idx, uint8_t reg)
 {
 	if (comp >= COMPUTER_COUNT) return false;
