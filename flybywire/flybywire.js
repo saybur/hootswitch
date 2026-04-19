@@ -94,9 +94,9 @@ function mouseSend(e)
 const transitionCodes = {
 	"AltLeft": 0x3A,
 	"AltRight": 0x3A,
-	"ArrowDown": 0x3C,
+	"ArrowDown": 0x3D,
 	"ArrowLeft": 0x3B,
-	"ArrowRight": 0x3D,
+	"ArrowRight": 0x3C,
 	"ArrowUp": 0x3E,
 	"Backslash": 0x2A,
 	"Backspace": 0x33,
