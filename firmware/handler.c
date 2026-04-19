@@ -12,9 +12,9 @@
 #include "handler.h"
 
 #include "drivers/joystick_handler.h"
-#include "drivers/kensington.h"
 #include "drivers/keyboard_handler.h"
 #include "drivers/mouse_handler.h"
+#include "drivers/trackball_handler.h"
 
 // the full list of possible device handlers
 static ndev_handler handler_list[HANDLER_MAX];
@@ -54,14 +54,23 @@ bool handler_get(uint8_t id, ndev_handler **handler)
 void handler_init(void)
 {
 	/*
-	 * ------------------------------------------------------------------------
-	 * This space available for handlers to tie into the system. Call init code
-	 * from here to set up during boot.
-	 * ------------------------------------------------------------------------
+	 * -----------------------------------------------------------------------
+	 *
+	 * This space available for handlers to tie into the system. Call init
+	 * code from here to set up during boot.
+	 *
+	 * Devices are interviewed in reverse order of handler registration. Put
+	 * specialty handlers at the bottom of the list and the generic handlers
+	 * at the top.
+	 *
+	 * -----------------------------------------------------------------------
 	 */
 
+	// generic handlers
 	keyboard_handler_init();
 	mouse_handler_init();
-	kensington_init();
+
+	// specialty handlers
+	trackball_handler_init();
 	joystick_handler_init();
 }
