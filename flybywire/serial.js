@@ -171,7 +171,7 @@ async function disconnect()
 function restartDebug()
 {
 	if (! port) return;
-	if (window.confirm("Do you want to perform a restart to debug? (See the wiki for details)")) {
+	if (window.confirm("Restart device? It will disconnect and wait for you to reconnect before booting.")) {
 		console.log("debug restart requested");
 		const a = new Uint8Array([0xF2]);
 		writeData(a);
