@@ -144,8 +144,8 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 	if (active >= COMPUTER_COUNT) return;
 	if (id >= device_count) return;
 
-	dbg_trace("gjoy %d: x:%d y:%d bk:%d th:%d btn:%d",
-			id, jdata->x, jdata->y, jdata->brake, jdata->throttle, jdata->buttons);
+	dbg_trace("gjoy %d: x1:%d y1:%d x2:%d y2:%d btn:%d",
+			id, jdata->x1, jdata->y1, jdata->x2, jdata->y2, jdata->buttons);
 
 	// remap data from the real device to the virtual handler
 	uint8_t odata[8];
@@ -155,22 +155,22 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 			odata[0] = ((jdata->buttons) >> 16) & 0xFF;
 			odata[1] = ((jdata->buttons) >> 8) & 0xFF;
 			odata[2] = (jdata->buttons) & 0xFF;
-			odata[3] = jdata->x + 0x80;
-			odata[4] = jdata->y + 0x80;
-			odata[5] = jdata->throttle;
-			odata[6] = jdata->brake;
+			odata[3] = jdata->x1 + 0x80;
+			odata[4] = jdata->y1 + 0x80;
+			odata[5] = jdata->y2 + 0x80;
+			odata[6] = jdata->x2 + 0x80;
 			odata[7] = 0;
 			odata_len = 8;
 			break;
 		case MODE_MOUSESTICK:
-			odata[0] = jdata->x + 0x80;
-			odata[1] = jdata->y + 0x80;
+			odata[0] = jdata->x1 + 0x80;
+			odata[1] = jdata->y1 + 0x80;
 			odata[2] = (jdata->buttons) & 0xFF;
 			odata_len = 3;
 			break;
 		default:
-			int8_t x = jdata->x;
-			int8_t y = jdata->y;
+			int8_t x = jdata->x1;
+			int8_t y = jdata->y1;
 			// store as mouse movement
 			util_mouse_encode(odata, x, y, jdata->buttons);
 			odata_len = 2;

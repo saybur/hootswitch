@@ -23,10 +23,12 @@ typedef enum {
  * 2) Least significant bit of button data is button 1.
  * 3) Buttons follow the usual ADB convention where set (1) is up and cleared
  *    (0) is pressed.
+ *
+ * When mapping this back to a Firebird 'x2' is used as the elevator and 'y2'
+ * as the throttle.
  */
 typedef struct {
-	int8_t x, y;
-	uint8_t brake, throttle;
+	int8_t x1, y1, x2, y2;
 	uint32_t buttons;
 } joystick_data;
 

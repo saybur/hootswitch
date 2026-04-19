@@ -16,6 +16,7 @@
 #include "task.h"
 #include "queue.h"
 
+#include "debug.h"
 #include "joystick.h"
 #include "keyboard.h"
 #include "virtual.h"
@@ -65,17 +66,25 @@ static void bt_joystick_task(void *parameters)
 			 * 512 is sometimes returned; compensate with special case.
 			 */
 			if (report.axis_x > 511) {
-				j.x = 127;
+				j.x1 = 127;
 			} else {
-				j.x = (((uint16_t)(report.axis_x)) >> 2) & 0xFF;
+				j.x1 = (((uint16_t)(report.axis_x)) >> 2) & 0xFF;
 			}
 			if (report.axis_y > 511) {
-				j.y = 127;
+				j.y1 = 127;
 			} else {
-				j.y	= (((uint16_t)(report.axis_y)) >> 2) & 0xFF;
+				j.y1	= (((uint16_t)(report.axis_y)) >> 2) & 0xFF;
 			}
-			j.throttle = (((uint16_t)(report.throttle)) >> 2) & 0xFF;
-			j.brake = (((uint16_t)(report.brake)) >> 2) & 0xFF;
+			if (report.axis_rx > 511) {
+				j.x2 = 255;
+			} else {
+				j.x2 = (((uint16_t)(report.axis_rx + 512)) >> 2) & 0xFF;
+			}
+			if (report.axis_ry > 511) {
+				j.y2 = 255;
+			} else {
+				j.y2 = (((uint16_t)(report.axis_ry + 512)) >> 2) & 0xFF;
+			}
 
 			// Firebird has these all over the place, see
 			// https://github.com/lampmerchant/tashnotes
@@ -89,15 +98,15 @@ static void bt_joystick_task(void *parameters)
 			if (report.buttons & 0x4) b |= 0x20;
 			if (report.buttons & 0x8) b |= 0x40;
 			if (report.dpad & 0x8)    b |= 0x80;
-			if (report.buttons & 0x10) b |= 0x100;
-			if (report.buttons & 0x20) b |= 0x200;
-			if (report.buttons & 0x40) b |= 0x400;
-			if (report.buttons & 0x100) b |= 0x800;
-			if (report.buttons & 0x200) b |= 0x1000;
-			if (report.misc_buttons & 0x1) b |= 0x2000;
-			if (report.misc_buttons & 0x2) b |= 0x4000;
-			if (report.misc_buttons & 0x4) b |= 0x8000;
-			if (report.misc_buttons & 0x8) b |= 0x10000L;
+
+			/*
+			 * There isn't much of a 1:1 between gamepads and the Firebird, for
+			 * the remaining buttons just shove 6 gamepad standard buttons and
+			 * 3 miscellaneous buttons (excepting system) in.
+			 */
+			b |= (report.buttons & 0x3F0) << 4;
+			b |= ((uint32_t)(report.misc_buttons & 0xE)) << 13;
+			// invert for Mac format where 1=up
 			j.buttons = ~b;
 
 			/*
@@ -105,10 +114,10 @@ static void bt_joystick_task(void *parameters)
 			 * report; actual Firebird devices seem to only trigger a Talk
 			 * update if the joystick has moved.
 			 */
-			if (last.x == j.x
-					&& last.y == j.y
-					&& last.brake == j.brake
-					&& last.throttle == j.throttle
+			if (last.x1 == j.x1
+					&& last.y1 == j.y1
+					&& last.x2 == j.x2
+					&& last.y2 == j.y2
 					&& last.buttons == j.buttons) {
 				// no change, veto
 			} else {
