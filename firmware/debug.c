@@ -92,6 +92,11 @@ void dbg_data(const char *format, ...)
 void dbg_trace_enable(bool state)
 {
 	trace_on = state;
+	if (trace_on) {
+		dbg("trace logging enabled");
+	} else {
+		dbg("trace logging disabled");
+	}
 }
 
 bool dbg_trace_is_enabled(void)
