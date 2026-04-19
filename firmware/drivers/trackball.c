@@ -271,12 +271,9 @@ static void drvr_sec_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 
 		switch (dev->mode) {
 			case TRACKBALL_MODE_KENS_TM5:
-				computer_data_set(comp, dev->drv_idx_sec, 1,
+				computer_data_set_isr(comp, dev->drv_idx_sec, 1,
 						reg1_default_kens_tm5, REGISTER_1_LEN, true);
 				break;
-			default:
-				dbg_err("track developer error: dev mode %d",
-						dev->mode);
 		}
 	}
 }
