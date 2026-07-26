@@ -13,7 +13,7 @@
 
 <body>
 
-<h1>Hootswitch Fly-By-Wire</h1>
+<h1>Hootswitch Fly-By-Wire (Old Protocol)</h1>
 
 <button id="connect-button">Connect</button>
 
@@ -32,7 +32,8 @@
 	<textarea id="log"></textarea>
 	<div class="controls">
 		<button type="button" class="config-button" onclick="restartDebug();">Restart</button>
-		<button type="button" class="config-button" onclick="bluetoothScan();">Bluetooth Scan</button>
+		<!-- broken due to a silly error on my part, will be fixed next release -->
+		<!--<button type="button" class="config-button" onclick="bluetoothScan();">Bluetooth Scan</button>-->
 		<button type="button" class="config-button" onclick="traceLogging();">Toggle Trace</button>
 	</div>
 </div>
@@ -59,11 +60,6 @@
 	<p>At least as of September 2024 most of these APIs are experimental and
 	only have support on Chrome/Chromium and the various web browsers using
 	that engine.</p>
-</div>
-
-<div style="display: block; margin: 0 auto; margin-top: 20px; width: 600px;">
-	<p>Important: if your device has firmware from before 26 July 2026, use the <a href="./old/index.html">old version
-	of the control interface</a>.</p>
 </div>
 
 <script src="serial.js"></script>

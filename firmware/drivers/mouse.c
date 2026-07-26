@@ -123,12 +123,6 @@ static void mouse_offer(mouse *mse, uint8_t downscale)
 	}
 }
 
-/*
- * ----------------------------------------------------------------------------
- * --- Computer-Side Mouse Driver ---------------------------------------------
- * ----------------------------------------------------------------------------
- */
-
 static void drvr_reset(uint8_t comp, uint32_t ref)
 {
 	if (mice[ref].mode == MOUSE_MODE_EXTENDED) {

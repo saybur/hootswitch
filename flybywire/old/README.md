@@ -4,8 +4,9 @@ Fly-By-Wire
 The web portion of the serial link control system used by Hootswitch. Visit
 <https://saybur.github.io/hootswitch/flybywire/> to access.
 
-If you are using a build from before 26 July 2026, use the older version at
-<https://saybur.github.io/hootswitch/flybywire/old/>.
+This version of the interface is for versions prior to 26 July 2026 that use
+the pre-SLIP control protocol. This will eventually be removed once the newer
+firmwares are proven to be stable.
 
 External Dependencies
 ---------------------

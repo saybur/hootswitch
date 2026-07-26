@@ -6,9 +6,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#ifndef __KENSINGTON_H__
-#define __KENSINGTON_H__
+#ifndef __TRACKBALL_HANDLER_H__
+#define __TRACKBALL_HANDLER_H__
 
-void kensington_init(void);
+void trackball_handler_init(void);
 
-#endif /* __KENSINGTON_H__ */
+#endif /* __TRACKBALL_HANDLER_H__ */

@@ -12,12 +12,9 @@
  * ----------------------------------------------------------------------------
  */
 
-const maxLogLength = 65536;
-
 let port = undefined;
 let reader = undefined;
 let writer = undefined;
-let line = "";
 let log = "";
 
 const connectButton = document.getElementById("connect-button");
@@ -69,19 +66,9 @@ async function connect()
 			if (done) {
 				break;
 			}
-			// convert chunks to lines prior to sending to terminal
-			let chunk = decoder.decode(value);
-			for (let i = 0; i < chunk.length; i++) {
-				let c = chunk.charAt(i);
-				if (c == '\n') {
-					readData(line);
-					line = "";
-				} else if (c == '\r') {
-					// ignore
-				} else {
-					line += c;
-				}
-			}
+			log += decoder.decode(value);
+			textLog.innerHTML = log;
+			textLog.scrollTop = textLog.scrollHeight;
 		}
 	} catch (err) {
 		console.log(err);
@@ -104,56 +91,6 @@ async function connect()
 	}
 }
 
-/**
- * Handles both SLIP byte-stuffing needed to transmit a frame and the write()
- * call; use this instead of direct calls to the writer.
- */
-function writeData(data)
-{
-	let stuffedLength = data.length + 1;
-	for (let i = 0; i < data.length; i++) {
-		if (data[i] == 0xC0) {
-			stuffedLength++;
-		} else if (data[i] == 0xDB) {
-			stuffedLength++;
-		}
-	}
-	let arr = new Uint8Array(stuffedLength);
-	let apos = 0;
-	for (let i = 0; i < data.length; i++) {
-		if (data[i] == 0xC0) {
-			arr[apos++] = 0xDB;
-			arr[apos++] = 0xDC;
-		} else if (data[i] == 0xDB) {
-			arr[apos++] = 0xDB;
-			arr[apos++] = 0xDD;
-		} else {
-			arr[apos++] = data[i];
-		}
-	}
-	arr[apos++] = 0xC0;
-	writer.write(arr);
-}
-
-function readData(data)
-{
-	if (data.startsWith("[    DATA]")) {
-		let token = data.substring(11);
-		console.log(`DATA: "${token}"`);
-		// TODO implement
-	} else {
-		// append to log item; if line becomes excessively long trucate
-		let newLength = log.length + data.length + 1;
-		if (log.length + data.length > maxLogLength) {
-			log = log.substring(newLength - maxLogLength) + data + '\n';
-		} else {
-			log += data + '\n';
-		}
-		textLog.innerHTML = log;
-		textLog.scrollTop = textLog.scrollHeight;
-	}
-}
-
 async function disconnect()
 {
 	if (! port) {
@@ -171,10 +108,10 @@ async function disconnect()
 function restartDebug()
 {
 	if (! port) return;
-	if (window.confirm("Restart device? It will disconnect and wait for you to reconnect before booting.")) {
+	if (window.confirm("Do you want to perform a restart to debug? (See the wiki for details)")) {
 		console.log("debug restart requested");
 		const a = new Uint8Array([0xF2]);
-		writeData(a);
+		writer.write(a);
 	}
 }
 

@@ -24,6 +24,7 @@ typedef enum {
 void dbg(const char *format, ...);
 void dbg_err(const char *format, ...);
 void dbg_trace(const char *format, ...);
+void dbg_data(const char *format, ...);
 
 void dbg_trace_enable(bool state);
 bool dbg_trace_is_enabled(void);

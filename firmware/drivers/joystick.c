@@ -91,11 +91,10 @@ static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 		case MODE_FIREBIRD:
 			if (hndl == DEFAULT_HANDLER || hndl == MODE_FIREBIRD) {
 				dev->dhi[comp] = hndl;
-				dbg("gjoy %d set to dhid %d", ref, hndl);
 				if (hndl == MODE_FIREBIRD) {
 					// driver expects data immediately, push something for Talk0
 					uint8_t reg0[8] = { 0xFF, 0xFF, 0xFF, 0x7F, 0x7F, 0x00, 0x00, 0x00 };
-					computer_data_set(comp, dev->drv_idx,
+					computer_data_set_isr(comp, dev->drv_idx,
 							0, reg0, sizeof(reg0), false);
 				}
 			}
@@ -104,7 +103,6 @@ static void drvr_set_handle(uint8_t comp, uint32_t ref, uint8_t hndl)
 		case MODE_MOUSESTICK:
 			if (hndl == DEFAULT_HANDLER || hndl == MODE_MOUSESTICK) {
 				dev->dhi[comp] = hndl;
-				dbg("gjoy %d set to dhid %d", ref, hndl);
 			}
 			break;
 	}
@@ -144,8 +142,11 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 	if (active >= COMPUTER_COUNT) return;
 	if (id >= device_count) return;
 
-	dbg_trace("gjoy %d: x:%d y:%d bk:%d th:%d btn:%d",
-			id, jdata->x, jdata->y, jdata->brake, jdata->throttle, jdata->buttons);
+	if (dbg_trace_is_enabled()) {
+		dbg_trace("gjoy %d (%02X): x1:%d y1:%d x2:%d y2:%d btn:%d",
+				id, devices[id].dhi[active],
+				jdata->x1, jdata->y1, jdata->x2, jdata->y2, jdata->buttons);
+	}
 
 	// remap data from the real device to the virtual handler
 	uint8_t odata[8];
@@ -155,22 +156,22 @@ void joystick_update(uint8_t id, joystick_data *jdata)
 			odata[0] = ((jdata->buttons) >> 16) & 0xFF;
 			odata[1] = ((jdata->buttons) >> 8) & 0xFF;
 			odata[2] = (jdata->buttons) & 0xFF;
-			odata[3] = jdata->x + 0x80;
-			odata[4] = jdata->y + 0x80;
-			odata[5] = jdata->throttle;
-			odata[6] = jdata->brake;
+			odata[3] = jdata->x1 + 0x80;
+			odata[4] = jdata->y1 + 0x80;
+			odata[5] = jdata->y2 + 0x80;
+			odata[6] = jdata->x2 + 0x80;
 			odata[7] = 0;
 			odata_len = 8;
 			break;
 		case MODE_MOUSESTICK:
-			odata[0] = jdata->x + 0x80;
-			odata[1] = jdata->y + 0x80;
+			odata[0] = jdata->x1 + 0x80;
+			odata[1] = jdata->y1 + 0x80;
 			odata[2] = (jdata->buttons) & 0xFF;
 			odata_len = 3;
 			break;
 		default:
-			int8_t x = jdata->x;
-			int8_t y = jdata->y;
+			int8_t x = jdata->x1;
+			int8_t y = jdata->y1;
 			// store as mouse movement
 			util_mouse_encode(odata, x, y, jdata->buttons);
 			odata_len = 2;

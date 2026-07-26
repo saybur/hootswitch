@@ -43,42 +43,37 @@ canvas.addEventListener("click", async () => {
 });
 
 canvas.addEventListener("mousedown", async () => {
-	mouseButtons = 0xFE;
-	mouseSend(null);
+	const a = new Uint8Array([0x80]);
+	writer.write(a);
 });
 
 canvas.addEventListener("mouseup", async () => {
-	mouseButtons = 0xFF;
-	mouseSend(null);
+	const a = new Uint8Array([0x81]);
+	writer.write(a);
 });
 
 function lockChangeAlert()
 {
 	if (document.pointerLockElement === canvas) {
 		console.log("pointer locked");
-		document.addEventListener("mousemove", mouseSend, false);
+		document.addEventListener("mousemove", updatePosition, false);
 	} else {
 		console.log("pointer unlocked");
-		document.removeEventListener("mousemove", mouseSend, false);
+		document.removeEventListener("mousemove", updatePosition, false);
 	}
 }
 document.addEventListener("pointerlockchange", lockChangeAlert, false);
 
-let mouseButtons = 0xFF;
-function mouseSend(e)
+function updatePosition(e)
 {
-	let x = 0;
-	let y = 0;
-	if (e !== null) {
-		x = e.movementX / movementDivisor;
-		x = x >= 0 ? Math.ceil(x) : Math.floor(x);
-		y = e.movementY / movementDivisor;
-		y = y >= 0 ? Math.ceil(y) : Math.floor(y);
-	}
-	let a = new Uint8Array([0x03, mouseButtons,
-			(x & 0xFF00) >> 8, x & 0xFF,
-			(y & 0xFF00) >> 8, y & 0xFF]);
-	writeData(a);
+	let x = e.movementX / movementDivisor;
+	let y = e.movementY / movementDivisor;
+	x = x >= 0 ? Math.ceil(x) : Math.floor(x);
+	y = y >= 0 ? Math.ceil(y) : Math.floor(y);
+	let a = new Uint8Array([0x82, x, 0x83, y, 0x84]);
+	a[1] = a[1] & 0x7F;
+	a[3] = a[3] & 0x7F;
+	writer.write(a);
 }
 
 /*
@@ -94,9 +89,9 @@ function mouseSend(e)
 const transitionCodes = {
 	"AltLeft": 0x3A,
 	"AltRight": 0x3A,
-	"ArrowDown": 0x3D,
+	"ArrowDown": 0x3C,
 	"ArrowLeft": 0x3B,
-	"ArrowRight": 0x3C,
+	"ArrowRight": 0x3D,
 	"ArrowUp": 0x3E,
 	"Backslash": 0x2A,
 	"Backspace": 0x33,
@@ -207,8 +202,8 @@ function doKeyDown(code)
 	console.log("doKeyDown", code);
 	const tc = transitionCodes[code];
 	if (tc != null) {
-		const a = new Uint8Array([0x02, tc]);
-		writeData(a);
+		const a = new Uint8Array([0x86, tc]);
+		writer.write(a);
 	}
 }
 
@@ -216,10 +211,10 @@ function doKeyUp(code)
 {
 	if (! port) return;
 	console.log("doKeyUp", code);
-	const tc = transitionCodes[code] + 0x80;
+	const tc = transitionCodes[code];
 	if (tc != null) {
-		const a = new Uint8Array([0x02, tc]);
-		writeData(a);
+		const a = new Uint8Array([0x87, tc]);
+		writer.write(a);
 	}
 }
 
@@ -238,8 +233,8 @@ function switcherSetup()
 			if (! port) return;
 			const idx = document.activeElement.innerText.slice(-1);
 			console.log("switch", idx);
-			const a = new Uint8Array([0x01, idx]);
-			writeData(a);
+			const a = new Uint8Array([0x85, idx]);
+			writer.write(a);
 		});
 		const c = document.createTextNode("Switch Comp " + i);
 		btn.appendChild(c);
@@ -252,14 +247,14 @@ function bluetoothScan()
 {
 	if (! port) return;
 	const a = new Uint8Array([0xE0]);
-	writeData(a);
+	writer.write(a);
 }
 
 function traceLogging()
 {
 	if (! port) return;
 	const a = new Uint8Array([0xE8]);
-	writeData(a);
+	writer.write(a);
 }
 
 /*

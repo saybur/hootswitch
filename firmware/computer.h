@@ -54,6 +54,9 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
  * Talk operations. This is useful for "status" registers that always return
  * the same data each time.
  *
+ * The _isr() version of this call can be used (with caution) from the
+ * interrupt context.
+ *
  * @param computer  the computer index to assign for.
  * @param drv_idx   the index that your driver/device assignment was originally
  *                  given during registration.
@@ -66,6 +69,8 @@ bool computer_data_offer(uint8_t comp, uint8_t drv_idx, uint8_t reg,
  *                  register was busy).
  */
 bool computer_data_set(uint8_t comp, uint8_t drv_idx, uint8_t reg,
+		uint8_t *data, uint8_t data_len, bool keep);
+bool computer_data_set_isr(uint8_t comp, uint8_t drv_idx, uint8_t reg,
 		uint8_t *data, uint8_t data_len, bool keep);
 
 /**

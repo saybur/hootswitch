@@ -15,7 +15,7 @@
 
 typedef struct {
 	int16_t x, y;
-	uint8_t buttons;
+	uint8_t buttons; // 1=up, 0=down, LSB button 1
 } virtual_mouse_data;
 
 bool virtual_keyboard_offer(bool up, uint8_t c);
