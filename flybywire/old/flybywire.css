@@ -1,0 +1,131 @@
+a {
+	color: #ccc;
+}
+
+a:visited {
+	color: #ccc;
+}
+
+body {
+	color: #ccc;
+	background-color: #222;
+	background-image: url("hoot.svg");
+	background-repeat: no-repeat;
+	background-size: 10%;
+}
+
+h1 {
+	text-align: center;
+}
+
+#connect-button {
+	display: block;
+	margin: 0 auto;
+	margin-bottom: 20px;
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	width: 200px;
+	height: 40px;
+	font-weight: bold;
+}
+
+#about-button {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	width: 100px;
+	height: 30px;
+	font-style: italic;
+}
+
+.controls {
+	display: flex;
+	margin: 0px auto;
+	width: 640px;
+	margin-top: 20px;
+	vertical-align: center;
+	justify-content: center;
+	gap: 10px;
+}
+
+.controls button {
+	color: #ccc;
+	border: 1px solid #aaa;
+	border-radius: 5px;
+	background-color: #333;
+	height: 30px;
+}
+
+#about-area {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	width: 600px;
+}
+
+#about-area p {
+	text-align: left;
+}
+
+#disconnect-message {
+	margin-bottom: 20px;
+	text-align: center;
+}
+
+canvas {
+	display: block;
+	margin: 0 auto;
+	margin-bottom: 20px;
+	border: 1px solid #555;
+	background-color: #111;
+}
+
+textarea {
+	display: block;
+	margin: 0 auto;
+	margin-top: 20px;
+	width: 990px;
+	height: 300px;
+	border: 1px solid #555;
+	color: #ccc;
+	background-color: #333;
+}
+
+fieldset {
+	margin: 0 auto;
+	margin-top: 10px;
+	width: 990px;
+	border-color: #ccc;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+fieldset hr {
+	width: 100%;
+	color: #ccc;
+}
+
+fieldset p {
+	margin: 0px;
+	margin-left: 8px;
+	margin-top: 6px;
+}
+
+fieldset select {
+	margin-right: 10px;
+}
+
+legend {
+	font-weight: bold;
+}
+
+.hidden {
+	display: none !important;
+}
