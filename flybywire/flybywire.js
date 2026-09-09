@@ -199,12 +199,32 @@ const transitionCodes = {
 };
 
 /*
+ * Handle swapping the Meta and Alt key for non-Mac keyboard layouts.
+ */
+const metaCheckbox = document.getElementById("swap-meta");
+function doKeyCodeSwap(code) {
+	if (metaCheckbox.checked) {
+		if (code === "MetaLeft") {
+			return "AltLeft";
+		} else if (code === "MetaRight") {
+			return "AltRight";
+		} else if (code === "AltLeft") {
+			return "MetaLeft";
+		} else if (code === "AltRight") {
+			return "MetaRight";
+		}
+	}
+	return code;
+}
+
+/*
  * Actual keycode generation is in keyboard-capture.js
  */
 function doKeyDown(code)
 {
 	if (! port) return;
 	console.log("doKeyDown", code);
+	code = doKeyCodeSwap(code);
 	const tc = transitionCodes[code];
 	if (tc != null) {
 		const a = new Uint8Array([0x02, tc]);
@@ -216,12 +236,23 @@ function doKeyUp(code)
 {
 	if (! port) return;
 	console.log("doKeyUp", code);
+	code = doKeyCodeSwap(code);
 	const tc = transitionCodes[code] + 0x80;
 	if (tc != null) {
 		const a = new Uint8Array([0x02, tc]);
 		writeData(a);
 	}
 }
+
+/*
+ * Suspend focus switching via Tab if the mouse is locked. This gets very
+ * annoying if you're coding and your style involves tab indentation!
+ */
+document.addEventListener("keydown", event => {
+	if (event.key === "Tab" && document.pointerLockElement === canvas) {
+		event.preventDefault();
+	}
+});
 
 /*
  * ----------------------------------------------------------------------------
