@@ -224,6 +224,16 @@ function doKeyUp(code)
 }
 
 /*
+ * Suspend focus switching via Tab if the mouse is locked. This gets very
+ * annoying if you're coding and your style involves tab indentation!
+ */
+document.addEventListener("keydown", event => {
+	if (event.key === "Tab" && document.pointerLockElement === canvas) {
+		event.preventDefault();
+	}
+});
+
+/*
  * ----------------------------------------------------------------------------
  *   Macro Keys and Switcher
  * ----------------------------------------------------------------------------
