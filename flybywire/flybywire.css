@@ -49,9 +49,11 @@ h1 {
 	margin: 0px auto;
 	width: 640px;
 	margin-top: 20px;
-	vertical-align: center;
 	justify-content: center;
-	gap: 10px;
+}
+
+.controls label {
+	padding-top: 5px;
 }
 
 .controls button {
@@ -60,6 +62,7 @@ h1 {
 	border-radius: 5px;
 	background-color: #333;
 	height: 30px;
+	margin-left: 10px;
 }
 
 #about-area {
@@ -124,6 +127,11 @@ fieldset select {
 
 legend {
 	font-weight: bold;
+}
+
+kbd {
+	border: 1px solid #999;
+	border-radius: 4px;
 }
 
 .hidden {
