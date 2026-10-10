@@ -6,13 +6,7 @@ endif()
 
 set(PICO_COMPILER pico_arm_cortex_m0plus_gcc)
 
-# if user has installed pico-sdk separately use that instead
-if (DEFINED ENV{PICO_SDK_PATH})
-	set(PICO_SDK_PATH $ENV{PICO_SDK_PATH})
-else()
-	set(PICO_SDK_PATH ${CMAKE_SOURCE_DIR}/external/pico-sdk)
-endif()
-
+set(PICO_SDK_PATH ${CMAKE_SOURCE_DIR}/external/pico-sdk)
 set(FREERTOS_PATH ${CMAKE_SOURCE_DIR}/external/FreeRTOS-Kernel)
 set(BLUEPAD32_PATH ${CMAKE_SOURCE_DIR}/external/bluepad32/src/components/bluepad32)
 
@@ -80,6 +74,8 @@ if (DEFINED HOOTSWITCH_WIRELESS)
 			${CMAKE_SOURCE_DIR}/firmware) # for FreeRTOSConfig.h
 	target_include_directories(bluepad32 PRIVATE
 			${CMAKE_SOURCE_DIR}/firmware/wireless) # for sdkconfig.h
+	target_include_directories(bluepad32 PRIVATE
+			${PICO_SDK_PATH}/lib/btstack/src) # for btstack
 endif()
 
 pico_enable_stdio_usb(hootswitch 1)
