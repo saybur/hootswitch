@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <hardware/watchdog.h>
+#include <pico/bootrom.h>
 
 #include <tusb.h>
 
@@ -46,6 +47,12 @@ static void control_reboot(bool debug)
 	// perform watchdog reset
 	watchdog_enable(1, 1);
 	while(1);
+}
+
+static void control_reboot_bootsel(void)
+{
+	// reboot with no activity light and with both interfaces active
+	rom_reset_usb_boot(0, 0);
 }
 
 control_reset_type control_check_reset(void)
@@ -119,6 +126,9 @@ static void control_commit(void)
 				break;
 			case CONTROL_REBOOT_DEBUG:
 				control_reboot(true);
+				break;
+			case CONTROL_REBOOT_BOOTSEL:
+				control_reboot_bootsel();
 				break;
 		}
 	} else {

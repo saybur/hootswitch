@@ -33,6 +33,7 @@
 #define CONTROL_DBG_STATS             0xEC
 #define CONTROL_REBOOT                0xF1
 #define CONTROL_REBOOT_DEBUG          0xF2
+#define CONTROL_REBOOT_BOOTSEL        0xF3
 
 typedef enum {
 	RESET_TYPE_NORMAL = 0,

@@ -178,6 +178,16 @@ function restartDebug()
 	}
 }
 
+function restartBootsel()
+{
+	if (! port) return;
+	if (window.confirm("Restart device to BOOTSEL mode? It will disconnect and wait for a .uf2 file to flash.")) {
+		console.log("bootsel restart requested");
+		const a = new Uint8Array([0xF3]);
+		writeData(a);
+	}
+}
+
 connectButton.addEventListener("click", async () => {
 	if (! port) {
 		connect();
