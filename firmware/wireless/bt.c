@@ -86,6 +86,15 @@ static void my_platform_on_device_disconnected(uni_hid_device_t* d)
 {
 	dbg("bt device disconnected: %p", d);
 	notify_user(NOTIFY_DEVICE_DISCONNECT);
+
+	/*
+	 * Multiple Logitech mice I own will randomly disconnect, with no apparent
+	 * pattern to the behavior. Rather than require a user to manually start a
+	 * scan, just treat disconnection events as a trigger to re-scan, both to
+	 * deal with these types of devices and because if someone is turning a BT
+	 * peripheral off they may be wanting to attach a different device.
+	 */
+	bt_scan();
 }
 
 static uni_error_t my_platform_on_device_ready(uni_hid_device_t* d)
